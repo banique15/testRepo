@@ -1,0 +1,92 @@
+---
+import Header from '../components/Header.astro';
+import Navigation from '../components/Navigation.astro';
+
+const pageTitle = "About Us";
+const currentYear = new Date().getFullYear();
+---
+
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<meta name="generator" content={Astro.generator} />
+		<title>{pageTitle}</title>
+		<style>
+			* {
+				margin: 0;
+				padding: 0;
+				box-sizing: border-box;
+			}
+
+			body {
+				font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+				line-height: 1.6;
+				color: #333;
+				background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+				min-height: 100vh;
+			}
+
+			.container {
+				max-width: 1200px;
+				margin: 0 auto;
+				padding: 2rem;
+			}
+
+			.content {
+				background: white;
+				border-radius: 12px;
+				padding: 2rem;
+				box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+				margin-bottom: 2rem;
+			}
+
+			.content h2 {
+				color: #667eea;
+				margin-bottom: 1rem;
+				font-size: 2rem;
+			}
+
+			.content p {
+				color: #666;
+				margin-bottom: 1rem;
+				font-size: 1.1rem;
+			}
+
+			footer {
+				text-align: center;
+				color: white;
+				opacity: 0.8;
+				margin-top: 3rem;
+			}
+
+			@media (max-width: 768px) {
+				.container {
+					padding: 1rem;
+				}
+				
+				.content {
+					padding: 1.5rem;
+				}
+			}
+		</style>
+	</head>
+	<body>
+		<div class="container">
+			<Navigation currentPath="/about" />
+			<Header title={pageTitle} subtitle="Learn more about our mission and team" />
+
+			<div class="content">
+				<h2>Our Story</h2>
+				<p>Welcome to our About page! This is a placeholder page created as part of the enhanced Astro website structure.</p>
+				<p>This page demonstrates how the modular component system works across different pages, with the same Header and Navigation components being reused consistently.</p>
+				<p>The navigation component automatically highlights the current page, and the header component accepts different titles and subtitles for each page.</p>
+			</div>
+
+			<footer>
+				<p>&copy; {currentYear} My Astro Site. Built with ❤️ and Astro.</p>
+			</footer>
+		</div>
+	</body>
+</html>

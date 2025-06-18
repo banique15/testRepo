@@ -1,0 +1,125 @@
+---
+import Header from '../components/Header.astro';
+import Navigation from '../components/Navigation.astro';
+
+const pageTitle = "Contact Us";
+const currentYear = new Date().getFullYear();
+---
+
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<meta name="generator" content={Astro.generator} />
+		<title>{pageTitle}</title>
+		<style>
+			* {
+				margin: 0;
+				padding: 0;
+				box-sizing: border-box;
+			}
+
+			body {
+				font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+				line-height: 1.6;
+				color: #333;
+				background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+				min-height: 100vh;
+			}
+
+			.container {
+				max-width: 1200px;
+				margin: 0 auto;
+				padding: 2rem;
+			}
+
+			.content {
+				background: white;
+				border-radius: 12px;
+				padding: 2rem;
+				box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+				margin-bottom: 2rem;
+			}
+
+			.content h2 {
+				color: #667eea;
+				margin-bottom: 1rem;
+				font-size: 2rem;
+			}
+
+			.content p {
+				color: #666;
+				margin-bottom: 1rem;
+				font-size: 1.1rem;
+			}
+
+			.contact-info {
+				display: grid;
+				grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+				gap: 1.5rem;
+				margin-top: 2rem;
+			}
+
+			.contact-item {
+				padding: 1.5rem;
+				border: 2px solid #f0f0f0;
+				border-radius: 8px;
+				text-align: center;
+			}
+
+			.contact-item h3 {
+				color: #667eea;
+				margin-bottom: 0.5rem;
+			}
+
+			footer {
+				text-align: center;
+				color: white;
+				opacity: 0.8;
+				margin-top: 3rem;
+			}
+
+			@media (max-width: 768px) {
+				.container {
+					padding: 1rem;
+				}
+				
+				.content {
+					padding: 1.5rem;
+				}
+			}
+		</style>
+	</head>
+	<body>
+		<div class="container">
+			<Navigation currentPath="/contact" />
+			<Header title={pageTitle} subtitle="Get in touch with us" />
+
+			<div class="content">
+				<h2>Get In Touch</h2>
+				<p>We'd love to hear from you! This is a placeholder contact page that demonstrates the modular component structure.</p>
+				<p>Notice how the navigation correctly highlights the current page, and the header component displays a custom title and subtitle for this page.</p>
+
+				<div class="contact-info">
+					<div class="contact-item">
+						<h3>📧 Email</h3>
+						<p>contact@example.com</p>
+					</div>
+					<div class="contact-item">
+						<h3>📱 Phone</h3>
+						<p>+1 (555) 123-4567</p>
+					</div>
+					<div class="contact-item">
+						<h3>📍 Address</h3>
+						<p>123 Astro Street<br>Web City, WC 12345</p>
+					</div>
+				</div>
+			</div>
+
+			<footer>
+				<p>&copy; {currentYear} My Astro Site. Built with ❤️ and Astro.</p>
+			</footer>
+		</div>
+	</body>
+</html>
