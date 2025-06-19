@@ -35,13 +35,23 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup Git configuration
+        run: |
+          git config --global --add safe.directory $GITHUB_WORKSPACE
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
       - name: Get current review iteration
         id: get-iteration
         run: |
+          # Ensure we're in the repository root
+          cd $GITHUB_WORKSPACE
+          
           PR_NUMBER="${{ github.event.pull_request.number || github.event.inputs.pr_number }}"
           
           # Count existing review issues for this PR
           ITERATION=$(gh issue list \
+            --repo ${{ github.repository }} \
             --label "code-review,pr-$PR_NUMBER" \
             --state all \
             --json number \
@@ -173,6 +183,9 @@ jobs:
           ITERATION: ${{ steps.get-iteration.outputs.iteration }}
           FEEDBACK_COUNT: ${{ steps.process-feedback.outputs.feedback-count }}
         run: |
+          # Ensure we're in the repository root
+          cd $GITHUB_WORKSPACE
+          
           # Read the review output
           REVIEW_OUTPUT=$(cat /tmp/review_output.md)
           
@@ -213,6 +226,7 @@ jobs:
 
           # Create the issue
           ISSUE_NUMBER=$(gh issue create \
+            --repo ${{ github.repository }} \
             --title "$ISSUE_TITLE" \
             --body "$ISSUE_BODY" \
             --label "code-review,auto-fix,pr-${PR_NUMBER},iteration-${ITERATION}" \
@@ -235,11 +249,11 @@ jobs:
           fi
           
           if [ -n "$PRIORITY_LABELS" ]; then
-            gh issue edit $ISSUE_NUMBER --add-label "${PRIORITY_LABELS#,}"
+            gh issue edit $ISSUE_NUMBER --repo ${{ github.repository }} --add-label "${PRIORITY_LABELS#,}"
           fi
 
           # Comment on the original PR
-          gh pr comment $PR_NUMBER --body "🔍 **Code Review Complete** (Iteration ${ITERATION})
+          gh pr comment $PR_NUMBER --repo ${{ github.repository }} --body "🔍 **Code Review Complete** (Iteration ${ITERATION})
 
           Found ${FEEDBACK_COUNT} item(s) for improvement. Created issue #${ISSUE_NUMBER} with detailed feedback.
 
@@ -262,7 +276,7 @@ jobs:
           ITERATION: ${{ needs.claude-review.outputs.review-iteration }}
         run: |
           # Comment on PR that review is complete
-          gh pr comment $PR_NUMBER --body "✅ **Code Review Complete!**
+          gh pr comment $PR_NUMBER --repo ${{ github.repository }} --body "✅ **Code Review Complete!**
 
           🎉 **All quality checks passed!** No significant issues or improvements needed.
 
@@ -296,6 +310,7 @@ jobs:
             
             # Trigger the workflow again for this PR
             gh workflow run claude-code-review.yml \
+              --repo ${{ github.repository }} \
               --field pr_number="$PR_NUMBER"
             
             echo "✅ Re-review triggered for PR #${PR_NUMBER}"
