@@ -45,8 +45,9 @@ jobs:
 
       - name: Get changed files in PR
         id: changed-files
+        if: steps.get-pr.outputs.pr_number
         run: |
-          PR_NUMBER="${{ steps.get-context.outputs.pr_number }}"
+          PR_NUMBER="${{ steps.get-pr.outputs.pr_number }}"
           
           # Get list of changed files in the PR
           CHANGED_FILES=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/files \
@@ -131,11 +132,19 @@ jobs:
         id: parse-issues
         if: steps.get-review.outputs.has_comments == 'true'
         run: |
+          CHANGED_FILES="${{ steps.changed-files.outputs.changed_files }}"
+          
           # Create a Python script to parse Claude review comments
           cat > parse_review.py << 'EOF'
           import re
           import json
           import sys
+          import os
+          
+          # Get changed files from environment
+          changed_files_str = os.environ.get('CHANGED_FILES', '')
+          changed_files = [f.strip() for f in changed_files_str.split('|') if f.strip()]
+          print(f"Changed files in PR: {changed_files}")
           
           # Define issue patterns and their categories - aligned with Claude Code Review prompt
           ISSUE_PATTERNS = {
