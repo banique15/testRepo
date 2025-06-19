@@ -4,7 +4,7 @@ on:
   workflow_run:
     workflows: ["Claude Code Review"]
     types: [completed]
-    branches: [main, develop, master]
+    branches: [main, develop, master, feature/*, bugfix/*]
   # Also allow manual trigger for testing
   workflow_dispatch:
     inputs:
@@ -16,7 +16,7 @@ on:
 jobs:
   create-issues-from-review:
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request') || github.event_name == 'workflow_dispatch' }}
     permissions:
       contents: read
       issues: write
@@ -59,17 +59,21 @@ jobs:
           # Get all comments from the PR that contain Claude review content
           echo "Fetching comments for PR #$PR_NUMBER..."
           
-          # Get issue comments (general PR comments)
+          # Get issue comments (general PR comments) - Claude action posts here
           CLAUDE_COMMENTS=$(gh api repos/${{ github.repository }}/issues/$PR_NUMBER/comments \
-            --jq '.[] | select(.user.login == "github-actions[bot]") | .body' || echo "")
+            --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("claude") or contains("review") or contains("Code Review") or contains("feedback"))) | .body' || echo "")
           
           # Get PR review comments (line-specific comments)
           CLAUDE_REVIEW_COMMENTS=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/comments \
-            --jq '.[] | select(.user.login == "github-actions[bot]") | .body' || echo "")
+            --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("claude") or contains("review") or contains("Code Review") or contains("feedback"))) | .body' || echo "")
           
           # Get PR reviews (overall review comments)
           CLAUDE_REVIEWS=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/reviews \
-            --jq '.[] | select(.user.login == "github-actions[bot]") | .body' || echo "")
+            --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("claude") or contains("review") or contains("Code Review") or contains("feedback"))) | .body' || echo "")
+          
+          # Also check for comments from the anthropics/claude-code-action
+          CLAUDE_ACTION_COMMENTS=$(gh api repos/${{ github.repository }}/issues/$PR_NUMBER/comments \
+            --jq '.[] | select(.user.type == "Bot" and (.body | length > 100)) | .body' || echo "")
           
           echo "Debug: Found comments from github-actions[bot]"
           
@@ -77,6 +81,7 @@ jobs:
           echo "$CLAUDE_COMMENTS" > claude_comments.txt
           echo "$CLAUDE_REVIEW_COMMENTS" >> claude_comments.txt
           echo "$CLAUDE_REVIEWS" >> claude_comments.txt
+          echo "$CLAUDE_ACTION_COMMENTS" >> claude_comments.txt
           
           echo "Debug: Content preview:"
           head -20 claude_comments.txt || echo "No content found"
@@ -102,14 +107,15 @@ jobs:
           import json
           import sys
           
-          # Define issue patterns and their categories
+          # Define issue patterns and their categories - aligned with Claude Code Review prompt
           ISSUE_PATTERNS = {
               'security': {
                   'patterns': [
                       r'security\s+(?:concern|issue|vulnerability|risk)',
                       r'(?:sql\s+injection|xss|csrf|authentication|authorization)',
                       r'(?:sensitive|confidential)\s+(?:data|information)',
-                      r'(?:password|token|key|secret)\s+(?:exposed|hardcoded|leaked)'
+                      r'(?:password|token|key|secret)\s+(?:exposed|hardcoded|leaked)',
+                      r'security\s+considerations?'
                   ],
                   'severity': 'high',
                   'label': '🔒 security',
@@ -117,10 +123,11 @@ jobs:
               },
               'performance': {
                   'patterns': [
-                      r'performance\s+(?:issue|concern|problem)',
+                      r'performance\s+(?:issue|concern|problem|considerations?)',
                       r'(?:slow|inefficient|bottleneck)',
                       r'(?:memory\s+leak|cpu\s+intensive)',
-                      r'(?:optimization|optimize)\s+(?:needed|required)'
+                      r'(?:optimization|optimize)\s+(?:needed|required)',
+                      r'performance\s+considerations?'
                   ],
                   'severity': 'medium',
                   'label': '⚡ performance',
@@ -128,10 +135,11 @@ jobs:
               },
               'bug': {
                   'patterns': [
-                      r'(?:bug|error|issue)\s+(?:potential|possible|likely)',
+                      r'(?:potential\s+)?(?:bug|error|issue)s?',
                       r'(?:null\s+pointer|undefined|exception)',
                       r'(?:race\s+condition|deadlock)',
-                      r'(?:logic\s+error|incorrect\s+implementation)'
+                      r'(?:logic\s+error|incorrect\s+implementation)',
+                      r'potential\s+(?:bug|issue)s?'
                   ],
                   'severity': 'high',
                   'label': '🐛 bug',
@@ -142,9 +150,11 @@ jobs:
                       r'code\s+quality',
                       r'(?:refactor|cleanup)\s+(?:needed|recommended)',
                       r'(?:duplicate|redundant)\s+code',
-                      r'(?:complex|complicated)\s+(?:logic|function)'
+                      r'(?:complex|complicated)\s+(?:logic|function)',
+                      r'best\s+practices?',
+                      r'code\s+quality\s+and\s+best\s+practices?'
                   ],
-                  'severity': 'low',
+                  'severity': 'medium',
                   'label': '📝 code-quality',
                   'emoji': '📝'
               },
@@ -152,7 +162,8 @@ jobs:
                   'patterns': [
                       r'(?:test|testing)\s+(?:missing|needed|required)',
                       r'(?:coverage|unit\s+test|integration\s+test)',
-                      r'(?:edge\s+case|error\s+handling)\s+(?:missing|needed)'
+                      r'(?:edge\s+case|error\s+handling)\s+(?:missing|needed)',
+                      r'test\s+coverage'
                   ],
                   'severity': 'medium',
                   'label': '🧪 testing',
