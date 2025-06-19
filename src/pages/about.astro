@@ -44,14 +44,203 @@ const currentYear = new Date().getFullYear();
 
 			.content h2 {
 				color: #667eea;
-				margin-bottom: 1rem;
+				margin-bottom: 1.5rem;
 				font-size: 2rem;
+			}
+
+			.content h3 {
+				color: #555;
+				margin-bottom: 1rem;
+				font-size: 1.5rem;
 			}
 
 			.content p {
 				color: #666;
 				margin-bottom: 1rem;
 				font-size: 1.1rem;
+			}
+
+			/* Dropdown Styles */
+			.dropdown-container {
+				margin-bottom: 1.5rem;
+			}
+
+			.dropdown-header {
+				background: #f8f9fa;
+				border: 2px solid #e9ecef;
+				border-radius: 8px;
+				padding: 1rem 1.5rem;
+				cursor: pointer;
+				display: flex;
+				justify-content: space-between;
+				align-items: center;
+				transition: all 0.3s ease;
+				user-select: none;
+			}
+
+			.dropdown-header:hover {
+				background: #e9ecef;
+				border-color: #667eea;
+			}
+
+			.dropdown-header.active {
+				background: #667eea;
+				color: white;
+				border-color: #667eea;
+			}
+
+			.dropdown-title {
+				font-weight: 600;
+				font-size: 1.2rem;
+			}
+
+			.dropdown-icon {
+				font-size: 1.5rem;
+				transition: transform 0.3s ease;
+			}
+
+			.dropdown-header.active .dropdown-icon {
+				transform: rotate(180deg);
+			}
+
+			.dropdown-content {
+				max-height: 0;
+				overflow: hidden;
+				transition: max-height 0.3s ease;
+				background: #fafbfc;
+				border-left: 3px solid #667eea;
+				margin-top: 0.5rem;
+			}
+
+			.dropdown-content.expanded {
+				max-height: 1000px;
+			}
+
+			.dropdown-inner {
+				padding: 1.5rem;
+			}
+
+			.dropdown-inner p {
+				margin-bottom: 1rem;
+			}
+
+			.dropdown-inner ul {
+				padding-left: 1.5rem;
+				margin-bottom: 1rem;
+			}
+
+			.dropdown-inner li {
+				margin-bottom: 0.5rem;
+				color: #666;
+			}
+
+			/* Team Member Cards */
+			.team-grid {
+				display: grid;
+				grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+				gap: 1.5rem;
+				margin-top: 1rem;
+			}
+
+			.team-member {
+				border: 2px solid #e9ecef;
+				border-radius: 8px;
+				overflow: hidden;
+				background: #fafbfc;
+			}
+
+			.team-header {
+				padding: 1.5rem;
+				background: linear-gradient(45deg, #667eea, #764ba2);
+				color: white;
+				text-align: center;
+			}
+
+			.team-name {
+				font-size: 1.3rem;
+				font-weight: 600;
+				margin-bottom: 0.5rem;
+			}
+
+			.team-role {
+				opacity: 0.9;
+				font-size: 1rem;
+			}
+
+			.team-toggle {
+				display: block;
+				width: 100%;
+				padding: 1rem 1.5rem;
+				background: white;
+				border: none;
+				cursor: pointer;
+				font-size: 1rem;
+				color: #667eea;
+				font-weight: 600;
+				transition: background-color 0.3s ease;
+			}
+
+			.team-toggle:hover {
+				background: #f8f9fa;
+			}
+
+			.team-bio {
+				max-height: 0;
+				overflow: hidden;
+				transition: max-height 0.3s ease;
+				background: white;
+			}
+
+			.team-bio.expanded {
+				max-height: 300px;
+			}
+
+			.team-bio-content {
+				padding: 0 1.5rem 1.5rem;
+				color: #666;
+				line-height: 1.6;
+			}
+
+			/* Timeline Styles */
+			.timeline {
+				position: relative;
+				margin-left: 2rem;
+			}
+
+			.timeline::before {
+				content: '';
+				position: absolute;
+				left: -1rem;
+				top: 0;
+				bottom: 0;
+				width: 2px;
+				background: #667eea;
+			}
+
+			.timeline-item {
+				position: relative;
+				margin-bottom: 2rem;
+				padding-left: 2rem;
+			}
+
+			.timeline-item::before {
+				content: '';
+				position: absolute;
+				left: -1.5rem;
+				top: 0.5rem;
+				width: 1rem;
+				height: 1rem;
+				background: #667eea;
+				border-radius: 50%;
+				border: 3px solid white;
+				box-shadow: 0 0 0 2px #667eea;
+			}
+
+			.timeline-year {
+				font-weight: 600;
+				color: #667eea;
+				font-size: 1.2rem;
+				margin-bottom: 0.5rem;
 			}
 
 			footer {
@@ -69,6 +258,26 @@ const currentYear = new Date().getFullYear();
 				.content {
 					padding: 1.5rem;
 				}
+
+				.team-grid {
+					grid-template-columns: 1fr;
+				}
+
+				.dropdown-header {
+					padding: 0.8rem 1rem;
+				}
+
+				.dropdown-title {
+					font-size: 1.1rem;
+				}
+
+				.timeline {
+					margin-left: 1rem;
+				}
+
+				.timeline-item {
+					padding-left: 1.5rem;
+				}
 			}
 		</style>
 	</head>
@@ -77,16 +286,314 @@ const currentYear = new Date().getFullYear();
 			<Navigation currentPath="/about" />
 			<Header title={pageTitle} subtitle="Learn more about our mission and team" />
 
+			<!-- Company History Section -->
 			<div class="content">
-				<h2>Our Story</h2>
-				<p>Welcome to our About page! This is a placeholder page created as part of the enhanced Astro website structure.</p>
-				<p>This page demonstrates how the modular component system works across different pages, with the same Header and Navigation components being reused consistently.</p>
-				<p>The navigation component automatically highlights the current page, and the header component accepts different titles and subtitles for each page.</p>
+				<h2>Company History</h2>
+				<p>Discover our journey through the years with our interactive timeline.</p>
+				
+				<div class="dropdown-container">
+					<div class="dropdown-header" onclick="toggleDropdown('history')">
+						<span class="dropdown-title">Our Journey Through Time</span>
+						<span class="dropdown-icon">▼</span>
+					</div>
+					<div class="dropdown-content" id="history">
+						<div class="dropdown-inner">
+							<div class="timeline">
+								<div class="timeline-item">
+									<div class="timeline-year">2018</div>
+									<p>Founded with a vision to create innovative web solutions that make a difference in people's lives.</p>
+								</div>
+								<div class="timeline-item">
+									<div class="timeline-year">2019</div>
+									<p>Launched our first major product and expanded our team to 10 dedicated professionals.</p>
+								</div>
+								<div class="timeline-item">
+									<div class="timeline-year">2021</div>
+									<p>Reached 1000+ satisfied customers and opened our second office location.</p>
+								</div>
+								<div class="timeline-item">
+									<div class="timeline-year">2023</div>
+									<p>Recognized as "Innovation Leader of the Year" and expanded internationally.</p>
+								</div>
+								<div class="timeline-item">
+									<div class="timeline-year">2024</div>
+									<p>Launched our AI-powered platform and celebrated 5000+ successful projects.</p>
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<!-- Mission & Values Section -->
+			<div class="content">
+				<h2>Mission & Values</h2>
+				<p>Learn about what drives us and the principles that guide our work.</p>
+
+				<div class="dropdown-container">
+					<div class="dropdown-header" onclick="toggleDropdown('mission')">
+						<span class="dropdown-title">Our Mission</span>
+						<span class="dropdown-icon">▼</span>
+					</div>
+					<div class="dropdown-content" id="mission">
+						<div class="dropdown-inner">
+							<p>To empower businesses and individuals through innovative technology solutions that simplify complex challenges and create meaningful connections in the digital world.</p>
+							<p>We believe technology should be accessible, intuitive, and transformative for everyone.</p>
+						</div>
+					</div>
+				</div>
+
+				<div class="dropdown-container">
+					<div class="dropdown-header" onclick="toggleDropdown('values')">
+						<span class="dropdown-title">Core Values</span>
+						<span class="dropdown-icon">▼</span>
+					</div>
+					<div class="dropdown-content" id="values">
+						<div class="dropdown-inner">
+							<ul>
+								<li><strong>Innovation:</strong> We constantly push boundaries and explore new possibilities to deliver cutting-edge solutions.</li>
+								<li><strong>Integrity:</strong> We maintain the highest ethical standards in all our business practices and relationships.</li>
+								<li><strong>Collaboration:</strong> We believe in the power of teamwork and value diverse perspectives.</li>
+								<li><strong>Excellence:</strong> We strive for perfection in every project and continuously improve our craft.</li>
+								<li><strong>Customer Focus:</strong> Our clients' success is our success, and we prioritize their needs above all else.</li>
+							</ul>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<!-- Team Members Section -->
+			<div class="content">
+				<h2>Meet Our Team</h2>
+				<p>Get to know the talented individuals who make our company exceptional.</p>
+
+				<div class="team-grid">
+					<div class="team-member">
+						<div class="team-header">
+							<div class="team-name">Sarah Johnson</div>
+							<div class="team-role">CEO & Founder</div>
+						</div>
+						<button class="team-toggle" onclick="toggleTeamBio('sarah')">
+							View Bio ▼
+						</button>
+						<div class="team-bio" id="sarah">
+							<div class="team-bio-content">
+								<p>Sarah brings over 15 years of experience in technology leadership. She founded the company with a vision to democratize access to innovative web solutions. When not leading strategic initiatives, she enjoys hiking and mentoring young entrepreneurs.</p>
+							</div>
+						</div>
+					</div>
+
+					<div class="team-member">
+						<div class="team-header">
+							<div class="team-name">Michael Chen</div>
+							<div class="team-role">CTO</div>
+						</div>
+						<button class="team-toggle" onclick="toggleTeamBio('michael')">
+							View Bio ▼
+						</button>
+						<div class="team-bio" id="michael">
+							<div class="team-bio-content">
+								<p>Michael is our technical visionary with expertise in AI, cloud architecture, and scalable systems. He holds a PhD in Computer Science and has published research in machine learning. In his spare time, he contributes to open-source projects and plays classical piano.</p>
+							</div>
+						</div>
+					</div>
+
+					<div class="team-member">
+						<div class="team-header">
+							<div class="team-name">Emily Rodriguez</div>
+							<div class="team-role">Head of Design</div>
+						</div>
+						<button class="team-toggle" onclick="toggleTeamBio('emily')">
+							View Bio ▼
+						</button>
+						<div class="team-bio" id="emily">
+							<div class="team-bio-content">
+								<p>Emily leads our design team with a passion for creating intuitive and beautiful user experiences. She has won multiple design awards and believes that great design should be both functional and delightful. She's also an avid photographer and sustainability advocate.</p>
+							</div>
+						</div>
+					</div>
+
+					<div class="team-member">
+						<div class="team-header">
+							<div class="team-name">David Kim</div>
+							<div class="team-role">Lead Developer</div>
+						</div>
+						<button class="team-toggle" onclick="toggleTeamBio('david')">
+							View Bio ▼
+						</button>
+						<div class="team-bio" id="david">
+							<div class="team-bio-content">
+								<p>David is our coding maestro who turns complex ideas into elegant solutions. With expertise in full-stack development and DevOps, he ensures our applications are robust and scalable. Outside of coding, he's a competitive chess player and loves cooking international cuisine.</p>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<!-- Awards & Recognition Section -->
+			<div class="content">
+				<h2>Awards & Recognition</h2>
+				<p>We're proud of the recognition we've received for our work and contributions to the industry.</p>
+
+				<div class="dropdown-container">
+					<div class="dropdown-header" onclick="toggleDropdown('awards')">
+						<span class="dropdown-title">Industry Awards</span>
+						<span class="dropdown-icon">▼</span>
+					</div>
+					<div class="dropdown-content" id="awards">
+						<div class="dropdown-inner">
+							<ul>
+								<li><strong>2024:</strong> "Innovation Leader of the Year" - Tech Excellence Awards</li>
+								<li><strong>2023:</strong> "Best Web Development Agency" - Digital Marketing Awards</li>
+								<li><strong>2022:</strong> "Rising Star Company" - Business Innovation Summit</li>
+								<li><strong>2021:</strong> "Customer Choice Award" - Industry Recognition Program</li>
+							</ul>
+						</div>
+					</div>
+				</div>
+
+				<div class="dropdown-container">
+					<div class="dropdown-header" onclick="toggleDropdown('certifications')">
+						<span class="dropdown-title">Certifications & Partnerships</span>
+						<span class="dropdown-icon">▼</span>
+					</div>
+					<div class="dropdown-content" id="certifications">
+						<div class="dropdown-inner">
+							<ul>
+								<li>ISO 27001 Certified for Information Security Management</li>
+								<li>Google Cloud Partner - Premier Tier</li>
+								<li>AWS Advanced Consulting Partner</li>
+								<li>Microsoft Gold Partner - Application Development</li>
+								<li>Certified B Corporation for Social and Environmental Performance</li>
+							</ul>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<!-- Company Culture Section -->
+			<div class="content">
+				<h2>Company Culture</h2>
+				<p>Discover what makes our workplace special and how we foster growth and innovation.</p>
+
+				<div class="dropdown-container">
+					<div class="dropdown-header" onclick="toggleDropdown('work-environment')">
+						<span class="dropdown-title">Work Environment</span>
+						<span class="dropdown-icon">▼</span>
+					</div>
+					<div class="dropdown-content" id="work-environment">
+						<div class="dropdown-inner">
+							<p>We've created a flexible, inclusive workplace where creativity thrives. Our open office design encourages collaboration, while quiet zones provide space for focused work.</p>
+							<ul>
+								<li>Flexible working hours and remote work options</li>
+								<li>Modern office spaces with ergonomic furniture</li>
+								<li>Recreational areas with games and relaxation spaces</li>
+								<li>Fully stocked kitchen with healthy snacks and beverages</li>
+							</ul>
+						</div>
+					</div>
+				</div>
+
+				<div class="dropdown-container">
+					<div class="dropdown-header" onclick="toggleDropdown('benefits')">
+						<span class="dropdown-title">Benefits & Perks</span>
+						<span class="dropdown-icon">▼</span>
+					</div>
+					<div class="dropdown-content" id="benefits">
+						<div class="dropdown-inner">
+							<ul>
+								<li>Comprehensive health, dental, and vision insurance</li>
+								<li>401(k) retirement plan with company matching</li>
+								<li>Professional development budget for courses and conferences</li>
+								<li>Annual team retreats and quarterly team building events</li>
+								<li>Unlimited PTO policy for work-life balance</li>
+								<li>Home office setup allowance for remote workers</li>
+							</ul>
+						</div>
+					</div>
+				</div>
+
+				<div class="dropdown-container">
+					<div class="dropdown-header" onclick="toggleDropdown('learning')">
+						<span class="dropdown-title">Learning & Development</span>
+						<span class="dropdown-icon">▼</span>
+					</div>
+					<div class="dropdown-content" id="learning">
+						<div class="dropdown-inner">
+							<p>We invest in our team's growth through continuous learning opportunities and career development programs.</p>
+							<ul>
+								<li>Monthly lunch-and-learn sessions with industry experts</li>
+								<li>Access to online learning platforms and courses</li>
+								<li>Internal mentorship programs</li>
+								<li>Conference attendance and speaking opportunities</li>
+								<li>Cross-functional project assignments</li>
+							</ul>
+						</div>
+					</div>
+				</div>
 			</div>
 
 			<footer>
 				<p>&copy; {currentYear} My Astro Site. Built with ❤️ and Astro.</p>
 			</footer>
 		</div>
+
+		<script>
+			function toggleDropdown(id) {
+				const content = document.getElementById(id);
+				const header = content.previousElementSibling;
+				const icon = header.querySelector('.dropdown-icon');
+				
+				// Toggle active class on header
+				header.classList.toggle('active');
+				
+				// Toggle expanded class on content
+				content.classList.toggle('expanded');
+				
+				// Update icon rotation (handled by CSS)
+			}
+
+			function toggleTeamBio(id) {
+				const bio = document.getElementById(id);
+				const button = bio.previousElementSibling;
+				
+				bio.classList.toggle('expanded');
+				
+				// Update button text
+				if (bio.classList.contains('expanded')) {
+					button.innerHTML = 'Hide Bio ▲';
+				} else {
+					button.innerHTML = 'View Bio ▼';
+				}
+			}
+
+			// Add keyboard accessibility
+			document.addEventListener('keydown', function(e) {
+				if (e.key === 'Enter' || e.key === ' ') {
+					const target = e.target;
+					if (target.classList.contains('dropdown-header')) {
+						e.preventDefault();
+						target.click();
+					} else if (target.classList.contains('team-toggle')) {
+						e.preventDefault();
+						target.click();
+					}
+				}
+			});
+
+			// Add focus management for accessibility
+			document.querySelectorAll('.dropdown-header, .team-toggle').forEach(element => {
+				element.setAttribute('tabindex', '0');
+				element.setAttribute('role', 'button');
+				element.setAttribute('aria-expanded', 'false');
+				
+				element.addEventListener('click', function() {
+					const isExpanded = this.classList.contains('active') || 
+									  (this.classList.contains('team-toggle') && 
+									   this.nextElementSibling.classList.contains('expanded'));
+					this.setAttribute('aria-expanded', isExpanded.toString());
+				});
+			});
+		</script>
 	</body>
 </html>
