@@ -1,0 +1,335 @@
+name: Claude Review Issue Creator
+
+on:
+  workflow_run:
+    workflows: ["Claude Code Review"]
+    types: [completed]
+    branches: [main, develop, master]
+
+jobs:
+  create-issues-from-review:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+      actions: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get PR number from workflow run
+        id: get-pr
+        run: |
+          # Get the PR number from the workflow run that triggered this
+          PR_NUMBER=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }} \
+            --jq '.pull_requests[0].number // empty')
+          
+          if [ -z "$PR_NUMBER" ]; then
+            echo "No PR found for this workflow run"
+            exit 0
+          fi
+          
+          echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+          echo "Found PR #$PR_NUMBER"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get Claude review comments
+        id: get-review
+        if: steps.get-pr.outputs.pr_number
+        run: |
+          PR_NUMBER="${{ steps.get-pr.outputs.pr_number }}"
+          
+          # Get all comments from the PR that contain Claude review content
+          CLAUDE_COMMENTS=$(gh api repos/${{ github.repository }}/issues/$PR_NUMBER/comments \
+            --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("Claude") or contains("review"))) | .body')
+          
+          # Also get PR review comments
+          CLAUDE_REVIEW_COMMENTS=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/comments \
+            --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("Claude") or contains("review"))) | .body')
+          
+          # Combine and save to file for processing
+          echo "$CLAUDE_COMMENTS" > claude_comments.txt
+          echo "$CLAUDE_REVIEW_COMMENTS" >> claude_comments.txt
+          
+          # Check if we have any content
+          if [ -s claude_comments.txt ]; then
+            echo "has_comments=true" >> $GITHUB_OUTPUT
+            echo "Found Claude review comments"
+          else
+            echo "has_comments=false" >> $GITHUB_OUTPUT
+            echo "No Claude review comments found"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Parse Claude review for issues
+        id: parse-issues
+        if: steps.get-review.outputs.has_comments == 'true'
+        run: |
+          # Create a Python script to parse Claude review comments
+          cat > parse_review.py << 'EOF'
+          import re
+          import json
+          import sys
+          
+          # Define issue patterns and their categories
+          ISSUE_PATTERNS = {
+              'security': {
+                  'patterns': [
+                      r'security\s+(?:concern|issue|vulnerability|risk)',
+                      r'(?:sql\s+injection|xss|csrf|authentication|authorization)',
+                      r'(?:sensitive|confidential)\s+(?:data|information)',
+                      r'(?:password|token|key|secret)\s+(?:exposed|hardcoded|leaked)'
+                  ],
+                  'severity': 'high',
+                  'label': '🔒 security',
+                  'emoji': '🔒'
+              },
+              'performance': {
+                  'patterns': [
+                      r'performance\s+(?:issue|concern|problem)',
+                      r'(?:slow|inefficient|bottleneck)',
+                      r'(?:memory\s+leak|cpu\s+intensive)',
+                      r'(?:optimization|optimize)\s+(?:needed|required)'
+                  ],
+                  'severity': 'medium',
+                  'label': '⚡ performance',
+                  'emoji': '⚡'
+              },
+              'bug': {
+                  'patterns': [
+                      r'(?:bug|error|issue)\s+(?:potential|possible|likely)',
+                      r'(?:null\s+pointer|undefined|exception)',
+                      r'(?:race\s+condition|deadlock)',
+                      r'(?:logic\s+error|incorrect\s+implementation)'
+                  ],
+                  'severity': 'high',
+                  'label': '🐛 bug',
+                  'emoji': '🐛'
+              },
+              'code_quality': {
+                  'patterns': [
+                      r'code\s+quality',
+                      r'(?:refactor|cleanup)\s+(?:needed|recommended)',
+                      r'(?:duplicate|redundant)\s+code',
+                      r'(?:complex|complicated)\s+(?:logic|function)'
+                  ],
+                  'severity': 'low',
+                  'label': '📝 code-quality',
+                  'emoji': '📝'
+              },
+              'testing': {
+                  'patterns': [
+                      r'(?:test|testing)\s+(?:missing|needed|required)',
+                      r'(?:coverage|unit\s+test|integration\s+test)',
+                      r'(?:edge\s+case|error\s+handling)\s+(?:missing|needed)'
+                  ],
+                  'severity': 'medium',
+                  'label': '🧪 testing',
+                  'emoji': '🧪'
+              },
+              'documentation': {
+                  'patterns': [
+                      r'(?:documentation|comment|doc)\s+(?:missing|needed)',
+                      r'(?:unclear|confusing)\s+(?:naming|variable|function)',
+                      r'(?:readme|changelog)\s+(?:update|needed)'
+                  ],
+                  'severity': 'low',
+                  'label': '📚 documentation',
+                  'emoji': '📚'
+              }
+          }
+          
+          def extract_issues_from_text(text):
+              issues = []
+              lines = text.split('\n')
+              
+              for i, line in enumerate(lines):
+                  line_lower = line.lower()
+                  
+                  for category, config in ISSUE_PATTERNS.items():
+                      for pattern in config['patterns']:
+                          if re.search(pattern, line_lower, re.IGNORECASE):
+                              # Extract context (current line + next few lines)
+                              context_lines = lines[max(0, i-1):min(len(lines), i+4)]
+                              context = '\n'.join(context_lines).strip()
+                              
+                              # Try to extract file path if mentioned
+                              file_match = re.search(r'`([^`]+\.[a-zA-Z]+)`', context)
+                              file_path = file_match.group(1) if file_match else 'Unknown'
+                              
+                              issue = {
+                                  'category': category,
+                                  'severity': config['severity'],
+                                  'label': config['label'],
+                                  'emoji': config['emoji'],
+                                  'description': line.strip(),
+                                  'context': context,
+                                  'file_path': file_path,
+                                  'line_number': i + 1
+                              }
+                              issues.append(issue)
+                              break
+              
+              return issues
+          
+          # Read the Claude comments
+          try:
+              with open('claude_comments.txt', 'r') as f:
+                  content = f.read()
+              
+              issues = extract_issues_from_text(content)
+              
+              # Remove duplicates based on description similarity
+              unique_issues = []
+              for issue in issues:
+                  is_duplicate = False
+                  for existing in unique_issues:
+                      if (issue['category'] == existing['category'] and 
+                          issue['file_path'] == existing['file_path'] and
+                          len(set(issue['description'].split()) & set(existing['description'].split())) > 3):
+                          is_duplicate = True
+                          break
+                  if not is_duplicate:
+                      unique_issues.append(issue)
+              
+              print(f"Found {len(unique_issues)} unique issues")
+              
+              # Output as JSON for GitHub Actions
+              with open('parsed_issues.json', 'w') as f:
+                  json.dump(unique_issues, f, indent=2)
+              
+              # Set output for GitHub Actions
+              print(f"issue_count={len(unique_issues)}")
+              
+          except Exception as e:
+              print(f"Error parsing issues: {e}")
+              sys.exit(1)
+          EOF
+          
+          # Run the parser
+          python parse_review.py
+          
+          # Read the results
+          if [ -f "parsed_issues.json" ]; then
+            ISSUE_COUNT=$(python -c "import json; print(len(json.load(open('parsed_issues.json'))))")
+            echo "issue_count=$ISSUE_COUNT" >> $GITHUB_OUTPUT
+            echo "Found $ISSUE_COUNT issues to create"
+          else
+            echo "issue_count=0" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create GitHub issues
+        if: steps.parse-issues.outputs.issue_count > 0
+        run: |
+          PR_NUMBER="${{ steps.get-pr.outputs.pr_number }}"
+          
+          # Read parsed issues
+          python << 'EOF'
+          import json
+          import subprocess
+          import os
+          
+          def create_github_issue(issue, pr_number):
+              title = f"{issue['emoji']} {issue['category'].title()}: {issue['file_path']}"
+              
+              body = f"""## 🔍 Claude Code Review Finding
+          
+          **Source PR**: #{pr_number}
+          **File**: `{issue['file_path']}`
+          **Severity**: {issue['severity'].title()}
+          **Category**: {issue['category'].title()}
+          
+          ### Description
+          {issue['description']}
+          
+          ### Context
+          ```
+          {issue['context']}
+          ```
+          
+          ### Recommendation
+          Please review and address this finding from the automated Claude code review.
+          
+          ---
+          *This issue was automatically created from Claude code review findings.*
+          """
+              
+              # Create the issue using GitHub CLI
+              cmd = [
+                  'gh', 'issue', 'create',
+                  '--title', title,
+                  '--body', body,
+                  '--label', issue['label'],
+                  '--label', f"severity:{issue['severity']}",
+                  '--label', 'automated-review'
+              ]
+              
+              try:
+                  result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+                  issue_url = result.stdout.strip()
+                  print(f"Created issue: {issue_url}")
+                  return issue_url
+              except subprocess.CalledProcessError as e:
+                  print(f"Failed to create issue: {e}")
+                  print(f"Error output: {e.stderr}")
+                  return None
+          
+          # Load and process issues
+          try:
+              with open('parsed_issues.json', 'r') as f:
+                  issues = json.load(f)
+              
+              created_issues = []
+              for issue in issues:
+                  issue_url = create_github_issue(issue, os.environ['PR_NUMBER'])
+                  if issue_url:
+                      created_issues.append(issue_url)
+              
+              print(f"Successfully created {len(created_issues)} issues")
+              
+          except Exception as e:
+              print(f"Error creating issues: {e}")
+          EOF
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.get-pr.outputs.pr_number }}
+
+      - name: Comment on PR with issue summary
+        if: steps.parse-issues.outputs.issue_count > 0
+        run: |
+          PR_NUMBER="${{ steps.get-pr.outputs.pr_number }}"
+          ISSUE_COUNT="${{ steps.parse-issues.outputs.issue_count }}"
+          
+          COMMENT="## 📋 Claude Review Issues Created
+          
+          I've analyzed the Claude code review and created **$ISSUE_COUNT** issues for tracking:
+          
+          $(python -c "
+          import json
+          try:
+              with open('parsed_issues.json', 'r') as f:
+                  issues = json.load(f)
+              for issue in issues:
+                  print(f\"- {issue['emoji']} **{issue['category'].title()}** ({issue['severity']}) - {issue['file_path']}\")
+          except:
+              pass
+          ")
+          
+          These issues will help track and resolve the findings from the automated code review.
+          
+          ---
+          *Issues created automatically by Claude Review Issue Creator*"
+          
+          gh pr comment $PR_NUMBER --body "$COMMENT"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -f claude_comments.txt parsed_issues.json parse_review.py
