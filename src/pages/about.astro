@@ -61,6 +61,114 @@ const currentYear = new Date().getFullYear();
 				margin-top: 3rem;
 			}
 
+			/* Dropdown Styles */
+			.dropdown-section {
+				margin-bottom: 1rem;
+				border: 1px solid #e0e0e0;
+				border-radius: 8px;
+				overflow: hidden;
+				transition: all 0.3s ease;
+			}
+
+			.dropdown-section:hover {
+				box-shadow: 0 4px 12px rgba(102, 126, 234, 0.1);
+			}
+
+			.dropdown-toggle {
+				width: 100%;
+				padding: 1.5rem;
+				background: linear-gradient(135deg, #f8f9ff 0%, #f0f2ff 100%);
+				border: none;
+				text-align: left;
+				cursor: pointer;
+				display: flex;
+				justify-content: space-between;
+				align-items: center;
+				font-size: 1.3rem;
+				font-weight: 600;
+				color: #667eea;
+				transition: all 0.3s ease;
+			}
+
+			.dropdown-toggle:hover {
+				background: linear-gradient(135deg, #f0f2ff 0%, #e8ebff 100%);
+				transform: translateY(-1px);
+			}
+
+			.dropdown-toggle:focus {
+				outline: 2px solid #667eea;
+				outline-offset: 2px;
+			}
+
+			.dropdown-toggle[aria-expanded="true"] {
+				background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+				color: white;
+			}
+
+			.dropdown-toggle[aria-expanded="true"] .dropdown-icon {
+				transform: rotate(180deg);
+			}
+
+			.dropdown-icon {
+				font-size: 0.9rem;
+				transition: transform 0.3s ease;
+				color: inherit;
+			}
+
+			.dropdown-content {
+				max-height: 0;
+				overflow: hidden;
+				transition: max-height 0.4s ease, padding 0.3s ease;
+				background: white;
+			}
+
+			.dropdown-content.expanded {
+				max-height: 1000px;
+				padding: 2rem;
+			}
+
+			.dropdown-content h3 {
+				color: #667eea;
+				margin: 1.5rem 0 1rem 0;
+				font-size: 1.2rem;
+			}
+
+			.dropdown-content h4 {
+				color: #667eea;
+				margin-bottom: 0.5rem;
+				font-size: 1.1rem;
+			}
+
+			.dropdown-content ul {
+				margin: 1rem 0;
+				padding-left: 1.5rem;
+			}
+
+			.dropdown-content li {
+				margin-bottom: 0.5rem;
+				color: #666;
+			}
+
+			.values-grid {
+				display: grid;
+				grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+				gap: 1.5rem;
+				margin-top: 1.5rem;
+			}
+
+			.value-item {
+				background: linear-gradient(135deg, #f8f9ff 0%, #f0f2ff 100%);
+				padding: 1.5rem;
+				border-radius: 8px;
+				border: 1px solid #e8ebff;
+				transition: transform 0.3s ease, box-shadow 0.3s ease;
+			}
+
+			.value-item:hover {
+				transform: translateY(-2px);
+				box-shadow: 0 6px 20px rgba(102, 126, 234, 0.15);
+			}
+
 			@media (max-width: 768px) {
 				.container {
 					padding: 1rem;
@@ -68,6 +176,24 @@ const currentYear = new Date().getFullYear();
 				
 				.content {
 					padding: 1.5rem;
+				}
+
+				.dropdown-toggle {
+					padding: 1rem;
+					font-size: 1.1rem;
+				}
+
+				.dropdown-content.expanded {
+					padding: 1.5rem;
+				}
+
+				.values-grid {
+					grid-template-columns: 1fr;
+					gap: 1rem;
+				}
+
+				.value-item {
+					padding: 1rem;
 				}
 			}
 		</style>
@@ -78,15 +204,124 @@ const currentYear = new Date().getFullYear();
 			<Header title={pageTitle} subtitle="Learn more about our mission and team" />
 
 			<div class="content">
-				<h2>Our Story</h2>
-				<p>Welcome to our About page! This is a placeholder page created as part of the enhanced Astro website structure.</p>
-				<p>This page demonstrates how the modular component system works across different pages, with the same Header and Navigation components being reused consistently.</p>
-				<p>The navigation component automatically highlights the current page, and the header component accepts different titles and subtitles for each page.</p>
+				<div class="dropdown-section">
+					<button class="dropdown-toggle" id="team-toggle" aria-expanded="false" aria-controls="team-content">
+						<span>Our Team</span>
+						<span class="dropdown-icon">▼</span>
+					</button>
+					<div class="dropdown-content" id="team-content" role="region" aria-labelledby="team-toggle">
+						<p>We are a passionate team of professionals dedicated to delivering exceptional results. Our diverse backgrounds and expertise allow us to approach challenges from multiple perspectives.</p>
+						<p>From seasoned industry veterans to innovative newcomers, each team member brings unique value to our collective mission. Together, we create solutions that make a real difference.</p>
+						<ul>
+							<li><strong>Leadership Team:</strong> Experienced executives guiding our strategic vision</li>
+							<li><strong>Development Team:</strong> Skilled engineers and designers crafting our products</li>
+							<li><strong>Support Team:</strong> Dedicated professionals ensuring customer satisfaction</li>
+						</ul>
+					</div>
+				</div>
+
+				<div class="dropdown-section">
+					<button class="dropdown-toggle" id="mission-toggle" aria-expanded="false" aria-controls="mission-content">
+						<span>Our Mission</span>
+						<span class="dropdown-icon">▼</span>
+					</button>
+					<div class="dropdown-content" id="mission-content" role="region" aria-labelledby="mission-toggle">
+						<p>Our mission is to empower individuals and organizations through innovative technology solutions that simplify complex challenges and enhance productivity.</p>
+						<p>We believe in the power of thoughtful design and user-centered development to create tools that not only meet needs but exceed expectations.</p>
+						<h3>Core Objectives:</h3>
+						<ul>
+							<li>Deliver intuitive and accessible solutions</li>
+							<li>Foster innovation through continuous learning</li>
+							<li>Build lasting relationships with our community</li>
+							<li>Maintain the highest standards of quality and integrity</li>
+						</ul>
+					</div>
+				</div>
+
+				<div class="dropdown-section">
+					<button class="dropdown-toggle" id="values-toggle" aria-expanded="false" aria-controls="values-content">
+						<span>Our Values</span>
+						<span class="dropdown-icon">▼</span>
+					</button>
+					<div class="dropdown-content" id="values-content" role="region" aria-labelledby="values-toggle">
+						<p>Our values guide every decision we make and every interaction we have. They are the foundation of our culture and the driving force behind our success.</p>
+						<div class="values-grid">
+							<div class="value-item">
+								<h4>Innovation</h4>
+								<p>We embrace creativity and encourage bold thinking to solve problems in new ways.</p>
+							</div>
+							<div class="value-item">
+								<h4>Integrity</h4>
+								<p>We act with honesty and transparency in all our business practices.</p>
+							</div>
+							<div class="value-item">
+								<h4>Excellence</h4>
+								<p>We strive for the highest quality in everything we deliver.</p>
+							</div>
+							<div class="value-item">
+								<h4>Collaboration</h4>
+								<p>We believe in the power of teamwork and shared knowledge.</p>
+							</div>
+						</div>
+					</div>
+				</div>
 			</div>
 
 			<footer>
 				<p>&copy; {currentYear} My Astro Site. Built with ❤️ and Astro.</p>
 			</footer>
 		</div>
+
+		<script>
+			// Dropdown functionality
+			document.addEventListener('DOMContentLoaded', function() {
+				const dropdownToggles = document.querySelectorAll('.dropdown-toggle');
+				
+				dropdownToggles.forEach(function(toggle) {
+					toggle.addEventListener('click', function() {
+						toggleDropdown(this);
+					});
+					
+					// Keyboard accessibility
+					toggle.addEventListener('keydown', function(e) {
+						if (e.key === 'Enter' || e.key === ' ') {
+							e.preventDefault();
+							toggleDropdown(this);
+						}
+					});
+				});
+				
+				function toggleDropdown(toggle) {
+					const content = document.getElementById(toggle.getAttribute('aria-controls'));
+					const isExpanded = toggle.getAttribute('aria-expanded') === 'true';
+					
+					// Close all other dropdowns
+					dropdownToggles.forEach(function(otherToggle) {
+						if (otherToggle !== toggle) {
+							const otherContent = document.getElementById(otherToggle.getAttribute('aria-controls'));
+							otherToggle.setAttribute('aria-expanded', 'false');
+							otherContent.classList.remove('expanded');
+						}
+					});
+					
+					// Toggle current dropdown
+					if (isExpanded) {
+						toggle.setAttribute('aria-expanded', 'false');
+						content.classList.remove('expanded');
+					} else {
+						toggle.setAttribute('aria-expanded', 'true');
+						content.classList.add('expanded');
+						
+						// Smooth scroll to dropdown if it's below the fold
+						setTimeout(function() {
+							const rect = toggle.getBoundingClientRect();
+							if (rect.top < 0) {
+								toggle.scrollIntoView({ behavior: 'smooth', block: 'start' });
+							}
+						}, 300);
+					}
+				}
+			});
+		</script>
 	</body>
 </html>
