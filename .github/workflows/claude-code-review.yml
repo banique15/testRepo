@@ -266,6 +266,21 @@ jobs:
           name: review-results-${{ needs.analyze-pr.outputs.pr-number }}
           path: /tmp
 
+      - name: Ensure Required Labels Exist
+        run: |
+          # Create required labels if they don't exist
+          gh label create "claude-review" --color "0052CC" --description "AI code review feedback" || true
+          gh label create "high-priority" --color "D73A4A" --description "High priority issue" || true
+          gh label create "medium-priority" --color "FBCA04" --description "Medium priority issue" || true
+          gh label create "low-priority" --color "0E8A16" --description "Low priority issue" || true
+          gh label create "security" --color "D73A4A" --description "Security related issue" || true
+          gh label create "bug" --color "D73A4A" --description "Bug report" || true
+          gh label create "performance" --color "FBCA04" --description "Performance related" || true
+          gh label create "critical" --color "B60205" --description "Critical issue" || true
+          echo "✅ Required labels ensured"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Create Feedback Issue
         id: create-issue
         run: |
@@ -273,6 +288,12 @@ jobs:
           REVIEW_TYPE="${{ needs.claude-review.outputs.review-type }}"
           ITERATION="${{ needs.analyze-pr.outputs.iteration }}"
           ISSUE_COUNT="${{ needs.claude-review.outputs.issue-count }}"
+          
+          # Ensure ITERATION has a value
+          if [ -z "$ITERATION" ]; then
+            ITERATION="1"
+            echo "⚠️ ITERATION was empty, defaulting to 1"
+          fi
           
           # Create issue title based on type
           case "$REVIEW_TYPE" in
