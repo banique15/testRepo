@@ -5,11 +5,18 @@ on:
     workflows: ["Claude Code Review"]
     types: [completed]
     branches: [main, develop, master]
+  # Also allow manual trigger for testing
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to process'
+        required: true
+        type: string
 
 jobs:
   create-issues-from-review:
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     permissions:
       contents: read
       issues: write
@@ -23,9 +30,15 @@ jobs:
       - name: Get PR number from workflow run
         id: get-pr
         run: |
-          # Get the PR number from the workflow run that triggered this
-          PR_NUMBER=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }} \
-            --jq '.pull_requests[0].number // empty')
+          # Handle manual trigger vs workflow_run trigger
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            PR_NUMBER="${{ github.event.inputs.pr_number }}"
+            echo "Using manual PR number: $PR_NUMBER"
+          else
+            # Get the PR number from the workflow run that triggered this
+            PR_NUMBER=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }} \
+              --jq '.pull_requests[0].number // empty')
+          fi
           
           if [ -z "$PR_NUMBER" ]; then
             echo "No PR found for this workflow run"
@@ -44,16 +57,29 @@ jobs:
           PR_NUMBER="${{ steps.get-pr.outputs.pr_number }}"
           
           # Get all comments from the PR that contain Claude review content
-          CLAUDE_COMMENTS=$(gh api repos/${{ github.repository }}/issues/$PR_NUMBER/comments \
-            --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("Claude") or contains("review"))) | .body')
+          echo "Fetching comments for PR #$PR_NUMBER..."
           
-          # Also get PR review comments
+          # Get issue comments (general PR comments)
+          CLAUDE_COMMENTS=$(gh api repos/${{ github.repository }}/issues/$PR_NUMBER/comments \
+            --jq '.[] | select(.user.login == "github-actions[bot]") | .body' || echo "")
+          
+          # Get PR review comments (line-specific comments)
           CLAUDE_REVIEW_COMMENTS=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/comments \
-            --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("Claude") or contains("review"))) | .body')
+            --jq '.[] | select(.user.login == "github-actions[bot]") | .body' || echo "")
+          
+          # Get PR reviews (overall review comments)
+          CLAUDE_REVIEWS=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/reviews \
+            --jq '.[] | select(.user.login == "github-actions[bot]") | .body' || echo "")
+          
+          echo "Debug: Found comments from github-actions[bot]"
           
           # Combine and save to file for processing
           echo "$CLAUDE_COMMENTS" > claude_comments.txt
           echo "$CLAUDE_REVIEW_COMMENTS" >> claude_comments.txt
+          echo "$CLAUDE_REVIEWS" >> claude_comments.txt
+          
+          echo "Debug: Content preview:"
+          head -20 claude_comments.txt || echo "No content found"
           
           # Check if we have any content
           if [ -s claude_comments.txt ]; then
