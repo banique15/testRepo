@@ -43,6 +43,20 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Get changed files in PR
+        id: changed-files
+        run: |
+          PR_NUMBER="${{ steps.get-context.outputs.pr_number }}"
+          
+          # Get list of changed files in the PR
+          CHANGED_FILES=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/files \
+            --jq '.[].filename' | tr '\n' '|')
+          
+          echo "changed_files=$CHANGED_FILES" >> $GITHUB_OUTPUT
+          echo "Changed files in PR: $CHANGED_FILES"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Get PR number from workflow run
         id: get-pr
         run: |
@@ -197,12 +211,35 @@ jobs:
               }
           }
           
+          def is_file_in_changed_files(file_path, changed_files):
+              """Check if the file path matches any of the changed files"""
+              if file_path == 'Unknown':
+                  return False
+              
+              # Normalize file path
+              file_path = file_path.strip('./')
+              
+              for changed_file in changed_files:
+                  if changed_file.endswith(file_path) or file_path.endswith(changed_file):
+                      return True
+                  # Also check if it's a partial match (same filename)
+                  if file_path.split('/')[-1] == changed_file.split('/')[-1]:
+                      return True
+              return False
+          
           def extract_issues_from_text(text):
               issues = []
               lines = text.split('\n')
               
               for i, line in enumerate(lines):
                   line_lower = line.lower()
+                  
+                  # Skip lines that are just general feedback
+                  if any(skip_word in line_lower for skip_word in [
+                      'overall', 'general', 'suggestion', 'consider', 'might want to',
+                      'could improve', 'recommendation', 'nice work', 'good job'
+                  ]):
+                      continue
                   
                   for category, config in ISSUE_PATTERNS.items():
                       for pattern in config['patterns']:
@@ -236,6 +273,11 @@ jobs:
                                           if file_match:
                                               file_path = file_match.group(1)
                               
+                              # FILTER: Only include issues from changed files OR critical issues
+                              if file_path != 'Unknown' and not is_file_in_changed_files(file_path, changed_files):
+                                  print(f"Skipping issue in unchanged file: {file_path}")
+                                  continue
+                              
                               issue = {
                                   'category': category,
                                   'severity': config['severity'],
@@ -263,12 +305,12 @@ jobs:
               
               issues = extract_issues_from_text(content)
               
-              # Remove duplicates based on description similarity
+              # Remove duplicates and apply additional filtering
               unique_issues = []
               for issue in issues:
                   is_duplicate = False
                   for existing in unique_issues:
-                      if (issue['category'] == existing['category'] and 
+                      if (issue['category'] == existing['category'] and
                           issue['file_path'] == existing['file_path'] and
                           len(set(issue['description'].split()) & set(existing['description'].split())) > 3):
                           is_duplicate = True
@@ -276,7 +318,15 @@ jobs:
                   if not is_duplicate:
                       unique_issues.append(issue)
               
-              print(f"Found {len(unique_issues)} unique issues")
+              # Limit to maximum 5 issues to avoid spam
+              if len(unique_issues) > 5:
+                  print(f"Limiting to 5 most critical issues (found {len(unique_issues)})")
+                  # Sort by severity priority: security > bug > performance
+                  severity_order = {'security': 0, 'bug': 1, 'performance': 2}
+                  unique_issues.sort(key=lambda x: severity_order.get(x['category'], 99))
+                  unique_issues = unique_issues[:5]
+              
+              print(f"Final filtered issues: {len(unique_issues)}")
               
               # Output as JSON for GitHub Actions
               with open('parsed_issues.json', 'w') as f:
@@ -291,7 +341,7 @@ jobs:
           EOF
           
           # Run the parser
-          python parse_review.py
+          CHANGED_FILES="$CHANGED_FILES" python parse_review.py
           
           # Read the results
           if [ -f "parsed_issues.json" ]; then
@@ -408,8 +458,9 @@ jobs:
           
           COMMENT="## 📋 Claude Review Issues Created
           
-          I've analyzed the Claude code review and created **$ISSUE_COUNT** issues for tracking:
+          I've analyzed the Claude code review and created **$ISSUE_COUNT** critical issues for tracking:
           
+          ### 🎯 Issues Created:
           $(python -c "
           import json
           try:
@@ -424,25 +475,91 @@ jobs:
               except:
                   pass
               
-              # Combine the information
-              for i, issue in enumerate(issues):
-                  if i < len(created_issues) and created_issues[i]:
-                      issue_number = created_issues[i]['number']
-                      print(f\"- {issue['emoji']} **{issue['category'].title()}** ({issue['severity']}) - {issue['file_path']} → [#{issue_number}](../../issues/{issue_number})\")
-                  else:
-                      print(f\"- {issue['emoji']} **{issue['category'].title()}** ({issue['severity']}) - {issue['file_path']}\")
+              if not issues:
+                  print('✅ No critical issues found in the changed files.')
+              else:
+                  # Group by severity
+                  high_issues = []
+                  medium_issues = []
+                  low_issues = []
+                  
+                  for i, issue in enumerate(issues):
+                      issue_info = {
+                          'issue': issue,
+                          'created': created_issues[i] if i < len(created_issues) and created_issues[i] else None
+                      }
+                      
+                      if issue['severity'] == 'high':
+                          high_issues.append(issue_info)
+                      elif issue['severity'] == 'medium':
+                          medium_issues.append(issue_info)
+                      else:
+                          low_issues.append(issue_info)
+                  
+                  # Display high severity first
+                  if high_issues:
+                      print('#### 🚨 High Severity Issues:')
+                      for item in high_issues:
+                          issue = item['issue']
+                          created = item['created']
+                          desc = issue['description'][:80] + '...' if len(issue['description']) > 80 else issue['description']
+                          if created:
+                              print(f\"- {issue['emoji']} **{issue['category'].title()}**: {desc}\")
+                              print(f\"  📁 File: \`{issue['file_path']}\` → [Issue #{created['number']}](../../issues/{created['number']})\")
+                              print()
+                          else:
+                              print(f\"- {issue['emoji']} **{issue['category'].title()}**: {desc}\")
+                              print(f\"  📁 File: \`{issue['file_path']}\`\")
+                              print()
+                  
+                  # Display medium severity
+                  if medium_issues:
+                      print('#### ⚠️ Medium Severity Issues:')
+                      for item in medium_issues:
+                          issue = item['issue']
+                          created = item['created']
+                          desc = issue['description'][:80] + '...' if len(issue['description']) > 80 else issue['description']
+                          if created:
+                              print(f\"- {issue['emoji']} **{issue['category'].title()}**: {desc}\")
+                              print(f\"  📁 File: \`{issue['file_path']}\` → [Issue #{created['number']}](../../issues/{created['number']})\")
+                              print()
+                          else:
+                              print(f\"- {issue['emoji']} **{issue['category'].title()}**: {desc}\")
+                              print(f\"  📁 File: \`{issue['file_path']}\`\")
+                              print()
+                  
+                  # Display low severity
+                  if low_issues:
+                      print('#### ℹ️ Low Severity Issues:')
+                      for item in low_issues:
+                          issue = item['issue']
+                          created = item['created']
+                          desc = issue['description'][:80] + '...' if len(issue['description']) > 80 else issue['description']
+                          if created:
+                              print(f\"- {issue['emoji']} **{issue['category'].title()}**: {desc}\")
+                              print(f\"  📁 File: \`{issue['file_path']}\` → [Issue #{created['number']}](../../issues/{created['number']})\")
+                              print()
+                          else:
+                              print(f\"- {issue['emoji']} **{issue['category'].title()}**: {desc}\")
+                              print(f\"  📁 File: \`{issue['file_path']}\`\")
+                              print()
           except Exception as e:
               print(f'Error generating issue list: {e}')
           ")
           
-          These issues are now linked to this PR and will help track and resolve the findings from the automated code review.
+          ### 📊 Summary:
+          - **Total Issues Created**: $ISSUE_COUNT
+          - **Focus**: Only critical issues from changed files
+          - **Filtered Out**: General suggestions, unchanged files, low-priority items
+          - **Max Limit**: 5 issues per PR to avoid spam
           
-          ### 🔗 Quick Actions
-          - [View all issues created from this PR](../../issues?q=is%3Aissue+label%3Aautomated-review+\"Source+PR%3A+%23$PR_NUMBER\")
+          ### 🔗 Quick Actions:
+          - [View all issues from this PR](../../issues?q=is%3Aissue+label%3Aautomated-review+\"Source+PR%3A+%23$PR_NUMBER\")
           - [View high severity issues](../../issues?q=is%3Aissue+label%3Aseverity%3Ahigh+\"Source+PR%3A+%23$PR_NUMBER\")
+          - [View security issues](../../issues?q=is%3Aissue+label%3Asecurity+\"Source+PR%3A+%23$PR_NUMBER\")
           
           ---
-          *Issues created automatically by Claude Review Issue Creator*"
+          *Issues created automatically by Claude Review Issue Creator - Only critical findings from changed files*"
           
           gh pr comment $PR_NUMBER --body "$COMMENT"
         env:
