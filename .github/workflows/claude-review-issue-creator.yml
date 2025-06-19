@@ -4,7 +4,7 @@ on:
   workflow_run:
     workflows: ["Claude Code Review"]
     types: [completed]
-    branches: [main, develop, master, feature/*, bugfix/*]
+    branches: [main, develop, master, claude/*, claude/issue-*]
   # Also allow manual trigger for testing
   workflow_dispatch:
     inputs:
