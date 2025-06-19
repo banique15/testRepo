@@ -1,0 +1,276 @@
+---
+import Header from '../components/Header.astro';
+import Navigation from '../components/Navigation.astro';
+
+const pageTitle = "Frequently Asked Questions";
+const currentYear = new Date().getFullYear();
+
+const faqs = [
+  {
+    question: "What is Astro?",
+    answer: "Astro is a modern static site generator that delivers lightning-fast performance by shipping zero JavaScript by default. It allows you to build websites using your favorite UI components from React, Vue, Svelte, or plain HTML."
+  },
+  {
+    question: "How do I get started with this website?",
+    answer: "You can explore the different sections using the navigation menu above. Visit the About page to learn more about the project, or check out the Contact page to get in touch with us."
+  },
+  {
+    question: "Can I use this project as a template?",
+    answer: "Absolutely! This project demonstrates best practices for building Astro websites with reusable components, responsive design, and modern styling techniques. Feel free to use it as a starting point for your own projects."
+  },
+  {
+    question: "What makes Astro different from other frameworks?",
+    answer: "Astro's key differentiator is its 'Component Islands' architecture. It generates static HTML by default and only loads JavaScript for interactive components when needed, resulting in faster load times and better performance."
+  },
+  {
+    question: "How do I add new pages to this site?",
+    answer: "To add new pages, create a new .astro file in the src/pages directory and add the corresponding navigation link to the Navigation component. The routing is file-based, so a file named 'example.astro' will be available at '/example'."
+  },
+  {
+    question: "Is this website mobile-friendly?",
+    answer: "Yes! This website is built with responsive design principles. The layout automatically adapts to different screen sizes, and all components include mobile-optimized styles for the best user experience across devices."
+  },
+  {
+    question: "How can I customize the styling?",
+    answer: "The website uses scoped CSS within each component and page. You can modify the colors, fonts, and layout by editing the style blocks in the respective .astro files. The current theme uses a gradient background with glassmorphism effects."
+  },
+  {
+    question: "Where can I find more resources about Astro?",
+    answer: "Check out the official Astro documentation at docs.astro.build, join the community Discord, or explore the themes and templates gallery. The home page has direct links to these resources."
+  }
+];
+---
+
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<meta name="generator" content={Astro.generator} />
+		<title>{pageTitle}</title>
+		<style>
+			* {
+				margin: 0;
+				padding: 0;
+				box-sizing: border-box;
+			}
+
+			body {
+				font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+				line-height: 1.6;
+				color: #333;
+				background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+				min-height: 100vh;
+			}
+
+			.container {
+				max-width: 1200px;
+				margin: 0 auto;
+				padding: 2rem;
+			}
+
+			.faq-container {
+				background: white;
+				border-radius: 12px;
+				padding: 2rem;
+				box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+				margin-bottom: 2rem;
+			}
+
+			.faq-intro {
+				text-align: center;
+				margin-bottom: 3rem;
+			}
+
+			.faq-intro h2 {
+				color: #667eea;
+				margin-bottom: 1rem;
+				font-size: 2rem;
+			}
+
+			.faq-intro p {
+				color: #666;
+				font-size: 1.1rem;
+			}
+
+			.faq-list {
+				display: grid;
+				gap: 1.5rem;
+			}
+
+			.faq-item {
+				border: 1px solid #e0e0e0;
+				border-radius: 8px;
+				overflow: hidden;
+				transition: box-shadow 0.3s ease;
+			}
+
+			.faq-item:hover {
+				box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+			}
+
+			.faq-question {
+				background: #f8f9fa;
+				padding: 1.5rem;
+				margin: 0;
+				font-size: 1.2rem;
+				font-weight: 600;
+				color: #667eea;
+				cursor: pointer;
+				display: flex;
+				justify-content: space-between;
+				align-items: center;
+				transition: background-color 0.3s ease;
+			}
+
+			.faq-question:hover {
+				background: #e9ecef;
+			}
+
+			.faq-question::after {
+				content: "▼";
+				font-size: 0.8rem;
+				color: #667eea;
+				transition: transform 0.3s ease;
+			}
+
+			.faq-answer {
+				padding: 1.5rem;
+				color: #666;
+				font-size: 1rem;
+				line-height: 1.7;
+				background: white;
+			}
+
+			.search-box {
+				margin-bottom: 2rem;
+				position: relative;
+			}
+
+			.search-input {
+				width: 100%;
+				padding: 1rem 1.5rem;
+				border: 2px solid #e0e0e0;
+				border-radius: 8px;
+				font-size: 1rem;
+				transition: border-color 0.3s ease;
+			}
+
+			.search-input:focus {
+				outline: none;
+				border-color: #667eea;
+			}
+
+			.search-input::placeholder {
+				color: #999;
+			}
+
+			footer {
+				text-align: center;
+				color: white;
+				opacity: 0.8;
+				margin-top: 3rem;
+			}
+
+			@media (max-width: 768px) {
+				.container {
+					padding: 1rem;
+				}
+				
+				.faq-container {
+					padding: 1.5rem;
+				}
+
+				.faq-question {
+					padding: 1rem;
+					font-size: 1.1rem;
+				}
+
+				.faq-answer {
+					padding: 1rem;
+				}
+
+				.faq-intro h2 {
+					font-size: 1.5rem;
+				}
+			}
+		</style>
+	</head>
+	<body>
+		<div class="container">
+			<Navigation currentPath="/faq" />
+			<Header title={pageTitle} subtitle="Find answers to common questions about this Astro website" />
+
+			<div class="faq-container">
+				<div class="faq-intro">
+					<h2>How can we help you?</h2>
+					<p>Browse through our most frequently asked questions below. If you can't find what you're looking for, feel free to contact us!</p>
+				</div>
+
+				<div class="search-box">
+					<input 
+						type="text" 
+						class="search-input" 
+						placeholder="Search FAQ..." 
+						id="faq-search"
+					/>
+				</div>
+
+				<div class="faq-list" id="faq-list">
+					{faqs.map((faq, index) => (
+						<div class="faq-item" data-faq-index={index}>
+							<div class="faq-question" onclick={`toggleFaq(${index})`}>
+								{faq.question}
+							</div>
+							<div class="faq-answer" id={`faq-answer-${index}`} style="display: none;">
+								{faq.answer}
+							</div>
+						</div>
+					))}
+				</div>
+			</div>
+
+			<footer>
+				<p>&copy; {currentYear} My Astro Site. Built with ❤️ and Astro.</p>
+			</footer>
+		</div>
+
+		<script>
+			// FAQ toggle functionality
+			function toggleFaq(index) {
+				const answer = document.getElementById(`faq-answer-${index}`);
+				const question = document.querySelector(`[data-faq-index="${index}"] .faq-question`);
+				
+				if (answer.style.display === 'none') {
+					answer.style.display = 'block';
+					question.style.backgroundColor = '#e9ecef';
+					question.querySelector('::after') && (question.style.transform = 'rotate(180deg)');
+				} else {
+					answer.style.display = 'none';
+					question.style.backgroundColor = '#f8f9fa';
+					question.querySelector('::after') && (question.style.transform = 'rotate(0deg)');
+				}
+			}
+
+			// Search functionality
+			document.getElementById('faq-search').addEventListener('input', function(e) {
+				const searchTerm = e.target.value.toLowerCase();
+				const faqItems = document.querySelectorAll('.faq-item');
+				
+				faqItems.forEach(item => {
+					const question = item.querySelector('.faq-question').textContent.toLowerCase();
+					const answer = item.querySelector('.faq-answer').textContent.toLowerCase();
+					
+					if (question.includes(searchTerm) || answer.includes(searchTerm)) {
+						item.style.display = 'block';
+					} else {
+						item.style.display = 'none';
+					}
+				});
+			});
+
+			// Make toggleFaq function globally available
+			window.toggleFaq = toggleFaq;
+		</script>
+	</body>
+</html>
