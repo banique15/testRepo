@@ -124,10 +124,10 @@ jobs:
             
             ### 🔧 Issues Found
             [For each issue, provide:]
-            - **File:** `path/to/file.ext:line`
-            - **Issue:** Brief description
-            - **Impact:** High/Medium/Low
-            - **Suggestion:** Specific improvement recommendation
+            File: path/to/file.ext:line
+            Issue: Brief description
+            Impact: High/Medium/Low
+            Suggestion: Specific improvement recommendation
             
             ### 📈 Improvement Opportunities
             [List non-critical improvements]
@@ -139,6 +139,18 @@ jobs:
 
           allowed_tools: "Bash(npm run test),Bash(npm run lint),Bash(npm run typecheck),Bash(npm run build)"
 
+      - name: Verify Claude Review Output
+        if: steps.get-iteration.outputs.max-iterations-reached == 'false'
+        run: |
+          REVIEW_OUTPUT="${{ steps.claude-review.outputs.response }}"
+          if [ -z "$REVIEW_OUTPUT" ] || [ "$REVIEW_OUTPUT" = "null" ]; then
+            echo "❌ ERROR: Claude review output is empty or null"
+            echo "This might indicate an issue with the Claude action or API"
+            exit 1
+          else
+            echo "✅ Claude review output received (${#REVIEW_OUTPUT} characters)"
+          fi
+
       - name: Process Claude feedback
         id: process-feedback
         if: steps.get-iteration.outputs.max-iterations-reached == 'false'
@@ -146,29 +158,58 @@ jobs:
           # Get the Claude review output
           REVIEW_OUTPUT="${{ steps.claude-review.outputs.response }}"
           
+          # Debug output
+          echo "DEBUG: Review output length: ${#REVIEW_OUTPUT}"
+          echo "DEBUG: First 500 characters of review:"
+          echo "$REVIEW_OUTPUT" | head -c 500
+          echo ""
+          echo "DEBUG: Checking for completion phrase..."
+          
           # Check if Claude found issues or if review is complete
           if echo "$REVIEW_OUTPUT" | grep -q "Code Review Complete.*No significant issues found"; then
             echo "has-feedback=false" >> $GITHUB_OUTPUT
             echo "feedback-count=0" >> $GITHUB_OUTPUT
             echo "✅ Code review complete - no issues found!"
           else
-            # Count the number of issues found
-            ISSUE_COUNT=$(echo "$REVIEW_OUTPUT" | grep -c "^\*\*File:\*\*\|^- \*\*File:\*\*" || echo "0")
+            echo "DEBUG: Not a completion message, checking for issues..."
+            
+            # Multiple methods to count issues
+            ISSUE_COUNT_FILES=$(echo "$REVIEW_OUTPUT" | grep -c "^File:" || echo "0")
+            ISSUE_COUNT_IMPACT=$(echo "$REVIEW_OUTPUT" | grep -c "Impact: High\|Impact: Medium\|Impact: Low" || echo "0")
+            ISSUE_COUNT_SECTION=$(echo "$REVIEW_OUTPUT" | grep -q "🔧 Issues Found" && echo "1" || echo "0")
+            
+            echo "DEBUG: File pattern matches: $ISSUE_COUNT_FILES"
+            echo "DEBUG: Impact pattern matches: $ISSUE_COUNT_IMPACT"
+            echo "DEBUG: Issues Found section exists: $ISSUE_COUNT_SECTION"
+            
+            # Use the highest count from different detection methods
+            ISSUE_COUNT=$ISSUE_COUNT_FILES
+            if [ $ISSUE_COUNT_IMPACT -gt $ISSUE_COUNT ]; then
+              ISSUE_COUNT=$ISSUE_COUNT_IMPACT
+            fi
             
             if [ $ISSUE_COUNT -gt 0 ]; then
               echo "has-feedback=true" >> $GITHUB_OUTPUT
               echo "feedback-count=$ISSUE_COUNT" >> $GITHUB_OUTPUT
               echo "Found $ISSUE_COUNT issues to address"
             else
-              # Check for improvement opportunities
-              if echo "$REVIEW_OUTPUT" | grep -q "Improvement Opportunities\|Action Items"; then
+              # Check for improvement opportunities or action items
+              echo "DEBUG: No direct issues found, checking for improvement opportunities..."
+              if echo "$REVIEW_OUTPUT" | grep -q "📈 Improvement Opportunities\|🎯 Action Items\|Improvement Opportunities\|Action Items"; then
                 echo "has-feedback=true" >> $GITHUB_OUTPUT
                 echo "feedback-count=1" >> $GITHUB_OUTPUT
-                echo "Found improvement opportunities"
+                echo "Found improvement opportunities or action items"
               else
-                echo "has-feedback=false" >> $GITHUB_OUTPUT
-                echo "feedback-count=0" >> $GITHUB_OUTPUT
-                echo "No actionable feedback found"
+                # Final fallback - if there's any structured content beyond positive aspects
+                if echo "$REVIEW_OUTPUT" | grep -q "🔧\|📈\|🎯\|Issues Found\|Improvement\|Action Items"; then
+                  echo "has-feedback=true" >> $GITHUB_OUTPUT
+                  echo "feedback-count=1" >> $GITHUB_OUTPUT
+                  echo "Found structured feedback content"
+                else
+                  echo "has-feedback=false" >> $GITHUB_OUTPUT
+                  echo "feedback-count=0" >> $GITHUB_OUTPUT
+                  echo "No actionable feedback found"
+                fi
               fi
             fi
           fi
@@ -189,6 +230,10 @@ jobs:
           
           # Read the review output
           REVIEW_OUTPUT=$(cat /tmp/review_output.md)
+          
+          echo "DEBUG: Creating issue for PR #${PR_NUMBER}, Iteration ${ITERATION}"
+          echo "DEBUG: Feedback count: ${FEEDBACK_COUNT}"
+          echo "DEBUG: Review output file size: $(wc -c < /tmp/review_output.md) bytes"
           
           # Create issue title
           ISSUE_TITLE="🔍 Code Review Feedback - PR #${PR_NUMBER} (Iteration ${ITERATION})"
@@ -225,17 +270,32 @@ jobs:
           ---
           *This issue was automatically created by the Claude Code Review workflow.*"
 
-          # Create the issue
-          ISSUE_NUMBER=$(gh issue create \
+          # Create the issue with error handling
+          echo "DEBUG: Attempting to create GitHub issue..."
+          echo "DEBUG: Title: $ISSUE_TITLE"
+          echo "DEBUG: Labels: code-review,auto-fix,pr-${PR_NUMBER},iteration-${ITERATION}"
+          
+          if ISSUE_NUMBER=$(gh issue create \
             --repo ${{ github.repository }} \
             --title "$ISSUE_TITLE" \
             --body "$ISSUE_BODY" \
             --label "code-review,auto-fix,pr-${PR_NUMBER},iteration-${ITERATION}" \
             --assignee "${{ github.event.pull_request.user.login || github.actor }}" \
             --json number \
-            --jq '.number')
-
-          echo "Created issue #${ISSUE_NUMBER} with code review feedback"
+            --jq '.number' 2>&1); then
+            echo "✅ Successfully created issue #${ISSUE_NUMBER} with code review feedback"
+          else
+            echo "❌ Failed to create issue. Error: $ISSUE_NUMBER"
+            echo "DEBUG: Attempting without assignee..."
+            ISSUE_NUMBER=$(gh issue create \
+              --repo ${{ github.repository }} \
+              --title "$ISSUE_TITLE" \
+              --body "$ISSUE_BODY" \
+              --label "code-review,auto-fix,pr-${PR_NUMBER},iteration-${ITERATION}" \
+              --json number \
+              --jq '.number')
+            echo "✅ Created issue #${ISSUE_NUMBER} without assignee"
+          fi
           
           # Add priority labels based on feedback content
           PRIORITY_LABELS=""
