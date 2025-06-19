@@ -20,12 +20,28 @@ jobs:
     permissions:
       contents: read
       issues: write
-      pull-requests: read
+      pull-requests: write  # Changed from read to write for commenting
       actions: read
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Create required labels
+        run: |
+          # Create labels if they don't exist (ignore errors if they already exist)
+          gh label create "security" --color "d73a4a" --description "Security related issues" || true
+          gh label create "performance" --color "a2eeef" --description "Performance related issues" || true
+          gh label create "bug" --color "d73a4a" --description "Bug related issues" || true
+          gh label create "code-quality" --color "c5def5" --description "Code quality issues" || true
+          gh label create "testing" --color "bfe5bf" --description "Testing related issues" || true
+          gh label create "documentation" --color "0075ca" --description "Documentation issues" || true
+          gh label create "automated-review" --color "e4e669" --description "Created by automated review" || true
+          gh label create "severity:high" --color "b60205" --description "High severity" || true
+          gh label create "severity:medium" --color "fbca04" --description "Medium severity" || true
+          gh label create "severity:low" --color "0e8a16" --description "Low severity" || true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Get PR number from workflow run
         id: get-pr
@@ -118,7 +134,7 @@ jobs:
                       r'security\s+considerations?'
                   ],
                   'severity': 'high',
-                  'label': '🔒 security',
+                  'label': 'security',
                   'emoji': '🔒'
               },
               'performance': {
@@ -130,7 +146,7 @@ jobs:
                       r'performance\s+considerations?'
                   ],
                   'severity': 'medium',
-                  'label': '⚡ performance',
+                  'label': 'performance',
                   'emoji': '⚡'
               },
               'bug': {
@@ -142,7 +158,7 @@ jobs:
                       r'potential\s+(?:bug|issue)s?'
                   ],
                   'severity': 'high',
-                  'label': '🐛 bug',
+                  'label': 'bug',
                   'emoji': '🐛'
               },
               'code_quality': {
@@ -155,7 +171,7 @@ jobs:
                       r'code\s+quality\s+and\s+best\s+practices?'
                   ],
                   'severity': 'medium',
-                  'label': '📝 code-quality',
+                  'label': 'code-quality',
                   'emoji': '📝'
               },
               'testing': {
@@ -166,7 +182,7 @@ jobs:
                       r'test\s+coverage'
                   ],
                   'severity': 'medium',
-                  'label': '🧪 testing',
+                  'label': 'testing',
                   'emoji': '🧪'
               },
               'documentation': {
@@ -176,7 +192,7 @@ jobs:
                       r'(?:readme|changelog)\s+(?:update|needed)'
                   ],
                   'severity': 'low',
-                  'label': '📚 documentation',
+                  'label': 'documentation',
                   'emoji': '📚'
               }
           }
