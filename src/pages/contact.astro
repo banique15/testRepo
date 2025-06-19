@@ -73,6 +73,87 @@ const currentYear = new Date().getFullYear();
 				margin-bottom: 0.5rem;
 			}
 
+			.contact-form {
+				margin: 2rem 0;
+				padding: 2rem;
+				border: 2px solid #f0f0f0;
+				border-radius: 8px;
+				background: #fafafa;
+			}
+
+			.form-group {
+				margin-bottom: 1.5rem;
+			}
+
+			.form-group label {
+				display: block;
+				margin-bottom: 0.5rem;
+				color: #333;
+				font-weight: 500;
+			}
+
+			.form-group input,
+			.form-group textarea {
+				width: 100%;
+				padding: 0.75rem;
+				border: 2px solid #ddd;
+				border-radius: 4px;
+				font-size: 1rem;
+				font-family: inherit;
+				transition: border-color 0.3s ease;
+			}
+
+			.form-group input:focus,
+			.form-group textarea:focus {
+				outline: none;
+				border-color: #667eea;
+			}
+
+			.form-group textarea {
+				resize: vertical;
+				min-height: 120px;
+			}
+
+			.error-message {
+				display: block;
+				color: #e74c3c;
+				font-size: 0.875rem;
+				margin-top: 0.25rem;
+				min-height: 1.2rem;
+			}
+
+			.submit-btn {
+				background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+				color: white;
+				border: none;
+				padding: 0.875rem 2rem;
+				font-size: 1rem;
+				border-radius: 4px;
+				cursor: pointer;
+				transition: transform 0.2s ease, box-shadow 0.2s ease;
+				font-weight: 500;
+			}
+
+			.submit-btn:hover {
+				transform: translateY(-2px);
+				box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+			}
+
+			.submit-btn:disabled {
+				opacity: 0.6;
+				cursor: not-allowed;
+				transform: none;
+			}
+
+			.success-message {
+				margin-top: 1rem;
+				padding: 1rem;
+				background: #d4edda;
+				color: #155724;
+				border: 1px solid #c3e6cb;
+				border-radius: 4px;
+			}
+
 			footer {
 				text-align: center;
 				color: white;
@@ -98,8 +179,32 @@ const currentYear = new Date().getFullYear();
 
 			<div class="content">
 				<h2>Get In Touch</h2>
-				<p>We'd love to hear from you! This is a placeholder contact page that demonstrates the modular component structure.</p>
-				<p>Notice how the navigation correctly highlights the current page, and the header component displays a custom title and subtitle for this page.</p>
+				<p>We'd love to hear from you! Fill out the form below and we'll get back to you as soon as possible.</p>
+
+				<form id="contactForm" class="contact-form">
+					<div class="form-group">
+						<label for="name">Name *</label>
+						<input type="text" id="name" name="name" required>
+						<span class="error-message" id="nameError"></span>
+					</div>
+
+					<div class="form-group">
+						<label for="email">Email Address *</label>
+						<input type="email" id="email" name="email" required>
+						<span class="error-message" id="emailError"></span>
+					</div>
+
+					<div class="form-group">
+						<label for="message">Message *</label>
+						<textarea id="message" name="message" rows="5" required></textarea>
+						<span class="error-message" id="messageError"></span>
+					</div>
+
+					<button type="submit" class="submit-btn">Send Message</button>
+					<div class="success-message" id="successMessage" style="display: none;">
+						Thank you for your message! We'll get back to you soon.
+					</div>
+				</form>
 
 				<div class="contact-info">
 					<div class="contact-item">
@@ -121,5 +226,152 @@ const currentYear = new Date().getFullYear();
 				<p>&copy; {currentYear} My Astro Site. Built with ❤️ and Astro.</p>
 			</footer>
 		</div>
+
+		<script>
+			document.addEventListener('DOMContentLoaded', function() {
+				const form = document.getElementById('contactForm');
+				const nameInput = document.getElementById('name');
+				const emailInput = document.getElementById('email');
+				const messageInput = document.getElementById('message');
+				const submitBtn = form.querySelector('.submit-btn');
+				const successMessage = document.getElementById('successMessage');
+
+				// Error message elements
+				const nameError = document.getElementById('nameError');
+				const emailError = document.getElementById('emailError');
+				const messageError = document.getElementById('messageError');
+
+				// Email validation regex
+				const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+				// Clear error messages
+				function clearErrors() {
+					nameError.textContent = '';
+					emailError.textContent = '';
+					messageError.textContent = '';
+				}
+
+				// Validate individual fields
+				function validateName() {
+					const name = nameInput.value.trim();
+					if (!name) {
+						nameError.textContent = 'Name is required';
+						return false;
+					}
+					if (name.length < 2) {
+						nameError.textContent = 'Name must be at least 2 characters long';
+						return false;
+					}
+					nameError.textContent = '';
+					return true;
+				}
+
+				function validateEmail() {
+					const email = emailInput.value.trim();
+					if (!email) {
+						emailError.textContent = 'Email address is required';
+						return false;
+					}
+					if (!emailRegex.test(email)) {
+						emailError.textContent = 'Please enter a valid email address';
+						return false;
+					}
+					emailError.textContent = '';
+					return true;
+				}
+
+				function validateMessage() {
+					const message = messageInput.value.trim();
+					if (!message) {
+						messageError.textContent = 'Message is required';
+						return false;
+					}
+					if (message.length < 10) {
+						messageError.textContent = 'Message must be at least 10 characters long';
+						return false;
+					}
+					messageError.textContent = '';
+					return true;
+				}
+
+				// Real-time validation
+				nameInput.addEventListener('blur', validateName);
+				emailInput.addEventListener('blur', validateEmail);
+				messageInput.addEventListener('blur', validateMessage);
+
+				// Form submission handler
+				form.addEventListener('submit', async function(e) {
+					e.preventDefault();
+					
+					clearErrors();
+					
+					// Validate all fields
+					const isNameValid = validateName();
+					const isEmailValid = validateEmail();
+					const isMessageValid = validateMessage();
+					
+					if (!isNameValid || !isEmailValid || !isMessageValid) {
+						return;
+					}
+
+					// Disable submit button during submission
+					submitBtn.disabled = true;
+					submitBtn.textContent = 'Sending...';
+
+					try {
+						// Simulate form submission (replace with actual endpoint)
+						await simulateFormSubmission({
+							name: nameInput.value.trim(),
+							email: emailInput.value.trim(),
+							message: messageInput.value.trim()
+						});
+
+						// Show success message
+						successMessage.style.display = 'block';
+						form.reset();
+						
+						// Hide success message after 5 seconds
+						setTimeout(() => {
+							successMessage.style.display = 'none';
+						}, 5000);
+
+					} catch (error) {
+						alert('Sorry, there was an error sending your message. Please try again or contact us directly.');
+					} finally {
+						// Re-enable submit button
+						submitBtn.disabled = false;
+						submitBtn.textContent = 'Send Message';
+					}
+				});
+
+				// Simulate form submission (replace with actual implementation)
+				async function simulateFormSubmission(formData) {
+					// For demonstration purposes, we'll simulate a successful submission
+					// In a real application, you would send this data to your backend endpoint
+					
+					console.log('Form submitted with data:', formData);
+					
+					// Simulate network delay
+					await new Promise(resolve => setTimeout(resolve, 1000));
+					
+					// Uncomment the following lines to integrate with a real backend:
+					/*
+					const response = await fetch('/api/contact', {
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json',
+						},
+						body: JSON.stringify(formData)
+					});
+					
+					if (!response.ok) {
+						throw new Error('Failed to submit form');
+					}
+					
+					return await response.json();
+					*/
+				}
+			});
+		</script>
 	</body>
 </html>
