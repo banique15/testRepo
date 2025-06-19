@@ -435,27 +435,51 @@ jobs:
           echo "DEBUG: Title: $ISSUE_TITLE"
           echo "DEBUG: Labels: code-review,auto-fix,pr-${PR_NUMBER},iteration-${ITERATION}"
           
-          if ISSUE_NUMBER=$(gh issue create \
+          # Try to create issue with assignee first
+          if gh issue create \
             --repo ${{ github.repository }} \
             --title "$ISSUE_TITLE" \
             --body "$ISSUE_BODY" \
             --label "code-review,auto-fix,pr-${PR_NUMBER},iteration-${ITERATION}" \
-            --assignee "${{ github.event.pull_request.user.login || github.actor }}" \
-            --json number \
-            --jq '.number' 2>&1); then
-            echo "✅ Successfully created issue #${ISSUE_NUMBER} with code review feedback"
+            --assignee "${{ github.event.pull_request.user.login || github.actor }}" 2>/dev/null; then
+            echo "✅ Successfully created issue with assignee"
           else
-            echo "❌ Failed to create issue. Error: $ISSUE_NUMBER"
-            echo "DEBUG: Attempting without assignee..."
-            ISSUE_NUMBER=$(gh issue create \
+            echo "⚠️ Failed to create issue with assignee, trying without..."
+            if gh issue create \
               --repo ${{ github.repository }} \
               --title "$ISSUE_TITLE" \
               --body "$ISSUE_BODY" \
-              --label "code-review,auto-fix,pr-${PR_NUMBER},iteration-${ITERATION}" \
-              --json number \
-              --jq '.number')
-            echo "✅ Created issue #${ISSUE_NUMBER} without assignee"
+              --label "code-review,auto-fix,pr-${PR_NUMBER},iteration-${ITERATION}" 2>/dev/null; then
+              echo "✅ Successfully created issue without assignee"
+            else
+              echo "❌ Failed to create issue completely. Trying with minimal approach..."
+              gh issue create \
+                --repo ${{ github.repository }} \
+                --title "$ISSUE_TITLE" \
+                --body "$ISSUE_BODY"
+              echo "✅ Created basic issue (labels may need manual addition)"
+            fi
           fi
+          
+          # Get the issue number from the most recent issue
+          ISSUE_NUMBER=$(gh issue list \
+            --repo ${{ github.repository }} \
+            --limit 1 \
+            --state open \
+            --search "author:app/github-actions" \
+            --json number \
+            --jq '.[0].number' 2>/dev/null || echo "")
+          
+          if [ -z "$ISSUE_NUMBER" ]; then
+            echo "⚠️ Could not determine issue number, using fallback method..."
+            ISSUE_NUMBER=$(gh issue list \
+              --repo ${{ github.repository }} \
+              --limit 1 \
+              --state open \
+              --label "code-review" 2>/dev/null | head -1 | awk '{print $1}' || echo "unknown")
+          fi
+          
+          echo "Issue number determined: $ISSUE_NUMBER"
           
           # Add priority labels based on review type and content
           PRIORITY_LABELS=""
@@ -494,55 +518,86 @@ jobs:
             PRIORITY_LABELS="${PRIORITY_LABELS},large-pr"
           fi
           
-          if [ -n "$PRIORITY_LABELS" ]; then
-            gh issue edit $ISSUE_NUMBER --repo ${{ github.repository }} --add-label "${PRIORITY_LABELS#,}"
+          if [ -n "$PRIORITY_LABELS" ] && [ "$ISSUE_NUMBER" != "unknown" ] && [ -n "$ISSUE_NUMBER" ]; then
+            echo "Adding priority labels: ${PRIORITY_LABELS#,}"
+            if gh issue edit $ISSUE_NUMBER --repo ${{ github.repository }} --add-label "${PRIORITY_LABELS#,}" 2>/dev/null; then
+              echo "✅ Successfully added priority labels"
+            else
+              echo "⚠️ Could not add priority labels to issue #$ISSUE_NUMBER"
+            fi
+          else
+            echo "⚠️ Skipping label addition - issue number: $ISSUE_NUMBER, labels: $PRIORITY_LABELS"
           fi
 
           # Comment on the original PR with review type context
-          case "$REVIEW_TYPE" in
-            "fallback")
-              PR_COMMENT="⚠️ **Manual Review Required** (Iteration ${ITERATION})
+          if [ "$ISSUE_NUMBER" != "unknown" ] && [ -n "$ISSUE_NUMBER" ]; then
+            case "$REVIEW_TYPE" in
+              "fallback")
+                PR_COMMENT="⚠️ **Manual Review Required** (Iteration ${ITERATION})
 
-          The automated AI code review could not complete due to technical limitations. Created issue #${ISSUE_NUMBER} for manual review.
+            The automated AI code review could not complete due to technical limitations. Created issue #${ISSUE_NUMBER} for manual review.
 
-          **Immediate Actions:**
-          - Review the issue for detailed analysis and recommendations
-          - Run local tests: \`npm run test && npm run lint && npm run typecheck\`
-          - Complete manual code review focusing on critical areas
-          - Close issue #${ISSUE_NUMBER} when review is complete
+            **Immediate Actions:**
+            - Review the issue for detailed analysis and recommendations
+            - Run local tests: \`npm run test && npm run lint && npm run typecheck\`
+            - Complete manual code review focusing on critical areas
+            - Close issue #${ISSUE_NUMBER} when review is complete
 
-          **PR Stats:** ${FILES_CHANGED} files changed, ${DIFF_SIZE} characters in diff"
-              ;;
-            "issues-found")
-              PR_COMMENT="🔍 **Code Issues Found** (Iteration ${ITERATION})
+            **PR Stats:** ${FILES_CHANGED} files changed, ${DIFF_SIZE} characters in diff"
+                ;;
+              "issues-found")
+                PR_COMMENT="🔍 **Code Issues Found** (Iteration ${ITERATION})
 
-          Found ${FEEDBACK_COUNT} issue(s) that need attention. Created issue #${ISSUE_NUMBER} with detailed feedback.
+            Found ${FEEDBACK_COUNT} issue(s) that need attention. Created issue #${ISSUE_NUMBER} with detailed feedback.
 
-          **To trigger automatic fixes:** Comment \`@claude\` in issue #${ISSUE_NUMBER}
+            **To trigger automatic fixes:** Comment \`@claude\` in issue #${ISSUE_NUMBER}
 
-          The review will automatically re-run after fixes are applied."
-              ;;
-            "improvements")
-              PR_COMMENT="📈 **Code Improvements Suggested** (Iteration ${ITERATION})
+            The review will automatically re-run after fixes are applied."
+                ;;
+              "improvements")
+                PR_COMMENT="📈 **Code Improvements Suggested** (Iteration ${ITERATION})
 
-          Found improvement opportunities. Created issue #${ISSUE_NUMBER} with suggestions.
+            Found improvement opportunities. Created issue #${ISSUE_NUMBER} with suggestions.
 
-          **To trigger automatic fixes:** Comment \`@claude\` in issue #${ISSUE_NUMBER}
+            **To trigger automatic fixes:** Comment \`@claude\` in issue #${ISSUE_NUMBER}
 
-          These are non-critical improvements that can enhance code quality."
-              ;;
-            *)
-              PR_COMMENT="🔍 **Code Review Complete** (Iteration ${ITERATION})
+            These are non-critical improvements that can enhance code quality."
+                ;;
+              *)
+                PR_COMMENT="🔍 **Code Review Complete** (Iteration ${ITERATION})
 
-          Found ${FEEDBACK_COUNT} item(s) for improvement. Created issue #${ISSUE_NUMBER} with detailed feedback.
+            Found ${FEEDBACK_COUNT} item(s) for improvement. Created issue #${ISSUE_NUMBER} with detailed feedback.
 
-          **To trigger automatic fixes:** Comment \`@claude\` in issue #${ISSUE_NUMBER}
+            **To trigger automatic fixes:** Comment \`@claude\` in issue #${ISSUE_NUMBER}
 
-          The review will automatically re-run after fixes are applied."
-              ;;
-          esac
+            The review will automatically re-run after fixes are applied."
+                ;;
+            esac
 
-          gh pr comment $PR_NUMBER --repo ${{ github.repository }} --body "$PR_COMMENT"
+            if gh pr comment $PR_NUMBER --repo ${{ github.repository }} --body "$PR_COMMENT" 2>/dev/null; then
+              echo "✅ Successfully commented on PR #$PR_NUMBER"
+            else
+              echo "⚠️ Could not comment on PR #$PR_NUMBER"
+            fi
+          else
+            # Fallback comment when issue number is unknown
+            PR_COMMENT="⚠️ **Code Review Process Completed** (Iteration ${ITERATION})
+
+            The automated code review has been completed, but there was an issue determining the feedback issue number.
+
+            **Next Steps:**
+            - Check the repository issues for the latest code review feedback
+            - Look for issues with labels: \`code-review\`, \`pr-${PR_NUMBER}\`, \`iteration-${ITERATION}\`
+            - Complete any recommended actions from the review
+
+            **Review Type:** ${REVIEW_TYPE}"
+
+            if gh pr comment $PR_NUMBER --repo ${{ github.repository }} --body "$PR_COMMENT" 2>/dev/null; then
+              echo "✅ Successfully posted fallback comment on PR #$PR_NUMBER"
+            else
+              echo "⚠️ Could not comment on PR #$PR_NUMBER"
+            fi
+          fi
 
   check-completion:
     needs: claude-review
