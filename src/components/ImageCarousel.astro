@@ -1,0 +1,284 @@
+---
+interface Props {
+  images?: string[];
+  autoplay?: boolean;
+  autoplayInterval?: number;
+}
+
+const { 
+  images = [], 
+  autoplay = true, 
+  autoplayInterval = 5000 
+} = Astro.props;
+
+// Generate random Lorem Picsum images if none provided
+const defaultImages = [
+  'https://picsum.photos/800/400?random=1',
+  'https://picsum.photos/800/400?random=2', 
+  'https://picsum.photos/800/400?random=3',
+  'https://picsum.photos/800/400?random=4',
+  'https://picsum.photos/800/400?random=5'
+];
+
+const carouselImages = images.length > 0 ? images : defaultImages;
+---
+
+<div class="carousel-container">
+  <div class="carousel">
+    <div class="carousel-track" id="carousel-track">
+      {carouselImages.map((image, index) => (
+        <div class="carousel-slide" data-index={index}>
+          <img src={image} alt={`Carousel image ${index + 1}`} loading="lazy" />
+        </div>
+      ))}
+    </div>
+    
+    <button class="carousel-btn carousel-btn-prev" id="prev-btn" aria-label="Previous image">
+      &#8249;
+    </button>
+    <button class="carousel-btn carousel-btn-next" id="next-btn" aria-label="Next image">
+      &#8250;
+    </button>
+    
+    <div class="carousel-indicators">
+      {carouselImages.map((_, index) => (
+        <button 
+          class="carousel-indicator" 
+          data-slide={index}
+          aria-label={`Go to slide ${index + 1}`}
+        />
+      ))}
+    </div>
+  </div>
+</div>
+
+<style>
+  .carousel-container {
+    margin: 2rem 0;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+  }
+
+  .carousel {
+    position: relative;
+    width: 100%;
+    height: 400px;
+    overflow: hidden;
+    background: #f0f0f0;
+  }
+
+  .carousel-track {
+    display: flex;
+    width: 100%;
+    height: 100%;
+    transition: transform 0.5s ease-in-out;
+  }
+
+  .carousel-slide {
+    min-width: 100%;
+    height: 100%;
+    position: relative;
+  }
+
+  .carousel-slide img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .carousel-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(255, 255, 255, 0.9);
+    border: none;
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    font-size: 24px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    z-index: 10;
+    color: #333;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .carousel-btn:hover {
+    background: rgba(255, 255, 255, 1);
+    transform: translateY(-50%) scale(1.1);
+  }
+
+  .carousel-btn-prev {
+    left: 20px;
+  }
+
+  .carousel-btn-next {
+    right: 20px;
+  }
+
+  .carousel-indicators {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 8px;
+    z-index: 10;
+  }
+
+  .carousel-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.5);
+    background: transparent;
+    cursor: pointer;
+    transition: all 0.3s ease;
+  }
+
+  .carousel-indicator.active {
+    background: white;
+    border-color: white;
+  }
+
+  .carousel-indicator:hover {
+    border-color: white;
+    background: rgba(255, 255, 255, 0.7);
+  }
+
+  @media (max-width: 768px) {
+    .carousel {
+      height: 250px;
+    }
+
+    .carousel-btn {
+      width: 40px;
+      height: 40px;
+      font-size: 18px;
+    }
+
+    .carousel-btn-prev {
+      left: 10px;
+    }
+
+    .carousel-btn-next {
+      right: 10px;
+    }
+
+    .carousel-indicators {
+      bottom: 10px;
+    }
+
+    .carousel-indicator {
+      width: 10px;
+      height: 10px;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .carousel {
+      height: 200px;
+    }
+  }
+</style>
+
+<script>
+  class ImageCarousel {
+    private currentSlide = 0;
+    private totalSlides: number;
+    private track: HTMLElement;
+    private indicators: NodeListOf<HTMLButtonElement>;
+    private autoplayInterval: number;
+    private autoplayTimer: number | null = null;
+    private isAutoplay: boolean;
+
+    constructor() {
+      this.track = document.getElementById('carousel-track') as HTMLElement;
+      this.indicators = document.querySelectorAll('.carousel-indicator') as NodeListOf<HTMLButtonElement>;
+      this.totalSlides = this.indicators.length;
+      this.autoplayInterval = parseInt(document.querySelector('.carousel-container')?.getAttribute('data-autoplay-interval') || '5000');
+      this.isAutoplay = document.querySelector('.carousel-container')?.getAttribute('data-autoplay') !== 'false';
+
+      this.init();
+    }
+
+    private init() {
+      // Set up navigation buttons
+      const prevBtn = document.getElementById('prev-btn');
+      const nextBtn = document.getElementById('next-btn');
+      
+      prevBtn?.addEventListener('click', () => this.prevSlide());
+      nextBtn?.addEventListener('click', () => this.nextSlide());
+
+      // Set up indicator buttons
+      this.indicators.forEach((indicator, index) => {
+        indicator.addEventListener('click', () => this.goToSlide(index));
+      });
+
+      // Initialize first slide
+      this.updateCarousel();
+
+      // Start autoplay if enabled
+      if (this.isAutoplay) {
+        this.startAutoplay();
+      }
+
+      // Pause autoplay on hover
+      const carousel = document.querySelector('.carousel');
+      carousel?.addEventListener('mouseenter', () => this.pauseAutoplay());
+      carousel?.addEventListener('mouseleave', () => {
+        if (this.isAutoplay) this.startAutoplay();
+      });
+    }
+
+    private nextSlide() {
+      this.currentSlide = (this.currentSlide + 1) % this.totalSlides;
+      this.updateCarousel();
+    }
+
+    private prevSlide() {
+      this.currentSlide = this.currentSlide === 0 ? this.totalSlides - 1 : this.currentSlide - 1;
+      this.updateCarousel();
+    }
+
+    private goToSlide(index: number) {
+      this.currentSlide = index;
+      this.updateCarousel();
+    }
+
+    private updateCarousel() {
+      // Move track
+      const translateX = -this.currentSlide * 100;
+      this.track.style.transform = `translateX(${translateX}%)`;
+
+      // Update indicators
+      this.indicators.forEach((indicator, index) => {
+        indicator.classList.toggle('active', index === this.currentSlide);
+      });
+    }
+
+    private startAutoplay() {
+      this.pauseAutoplay();
+      this.autoplayTimer = window.setInterval(() => {
+        this.nextSlide();
+      }, this.autoplayInterval);
+    }
+
+    private pauseAutoplay() {
+      if (this.autoplayTimer) {
+        clearInterval(this.autoplayTimer);
+        this.autoplayTimer = null;
+      }
+    }
+  }
+
+  // Initialize carousel when DOM is ready
+  document.addEventListener('DOMContentLoaded', () => {
+    new ImageCarousel();
+  });
+</script>

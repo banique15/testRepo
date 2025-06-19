@@ -1,6 +1,7 @@
 ---
 import Header from '../components/Header.astro';
 import Navigation from '../components/Navigation.astro';
+import ImageCarousel from '../components/ImageCarousel.astro';
 
 const pageTitle = "Welcome to My Astro Site";
 const currentYear = new Date().getFullYear();
@@ -131,6 +132,8 @@ const currentYear = new Date().getFullYear();
 		<div class="container">
 			<Navigation currentPath="/" />
 			<Header title={pageTitle} />
+			
+			<ImageCarousel />
 
 			<div class="features">
 				<h2>✨ Why Astro?</h2>
