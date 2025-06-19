@@ -13,22 +13,23 @@ on:
         type: string
 
 env:
-  MAX_REVIEW_ITERATIONS: 3
+  REPO: ${{ github.repository }}
+  PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+  ITERATION_LIMIT: 3
 
 jobs:
-  claude-review:
+  analyze-pr:
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: write
-      issues: write
-      id-token: write
-    
+      issues: read
     outputs:
-      has-feedback: ${{ steps.process-feedback.outputs.has-feedback }}
-      feedback-count: ${{ steps.process-feedback.outputs.feedback-count }}
-      review-iteration: ${{ steps.get-iteration.outputs.iteration }}
+      pr-number: ${{ steps.setup.outputs.pr-number }}
+      review-strategy: ${{ steps.analysis.outputs.strategy }}
+      iteration: ${{ steps.iteration.outputs.number }}
+      should-review: ${{ steps.iteration.outputs.should-review }}
+      pr-stats: ${{ steps.analysis.outputs.stats }}
     
     steps:
       - name: Checkout repository
@@ -36,99 +37,99 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Git configuration
+      - name: Setup PR Context
+        id: setup
         run: |
-          git config --global --add safe.directory $GITHUB_WORKSPACE
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          echo "pr-number=$PR_NUMBER" >> $GITHUB_OUTPUT
+          echo "📋 Analyzing PR #$PR_NUMBER"
 
-      - name: Get current review iteration
-        id: get-iteration
+      - name: Check Review Iteration
+        id: iteration
         run: |
-          # Ensure we're in the repository root
-          cd $GITHUB_WORKSPACE
-          
-          PR_NUMBER="${{ github.event.pull_request.number || github.event.inputs.pr_number }}"
-          
           # Count existing review issues for this PR
           ITERATION=$(gh issue list \
-            --repo ${{ github.repository }} \
-            --label "code-review,pr-$PR_NUMBER" \
+            --repo $REPO \
+            --label "claude-review,pr-$PR_NUMBER" \
             --state all \
             --json number \
-            --jq 'length')
+            --jq 'length' 2>/dev/null || echo "0")
           
           ITERATION=$((ITERATION + 1))
-          
           echo "iteration=$ITERATION" >> $GITHUB_OUTPUT
-          echo "pr-number=$PR_NUMBER" >> $GITHUB_OUTPUT
-          echo "Current review iteration: $ITERATION"
           
-          if [ $ITERATION -gt $MAX_REVIEW_ITERATIONS ]; then
-            echo "::warning::Maximum review iterations ($MAX_REVIEW_ITERATIONS) reached for PR #$PR_NUMBER"
-            echo "max-iterations-reached=true" >> $GITHUB_OUTPUT
+          if [ $ITERATION -le $ITERATION_LIMIT ]; then
+            echo "should-review=true" >> $GITHUB_OUTPUT
+            echo "✅ Review iteration $ITERATION/$ITERATION_LIMIT"
           else
-            echo "max-iterations-reached=false" >> $GITHUB_OUTPUT
+            echo "should-review=false" >> $GITHUB_OUTPUT
+            echo "⚠️ Maximum iterations ($ITERATION_LIMIT) reached"
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Analyze PR Size and Complexity
-        id: pr-analysis
-        if: steps.get-iteration.outputs.max-iterations-reached == 'false'
+        id: analysis
+        if: steps.iteration.outputs.should-review == 'true'
         run: |
-          PR_NUMBER="${{ github.event.pull_request.number || github.event.inputs.pr_number }}"
-          
-          # Get PR diff and analyze size
-          DIFF_OUTPUT=$(gh pr diff $PR_NUMBER --repo ${{ github.repository }} 2>/dev/null || echo "")
+          # Get PR statistics
+          DIFF_OUTPUT=$(gh pr diff $PR_NUMBER --repo $REPO 2>/dev/null || echo "")
           DIFF_SIZE=${#DIFF_OUTPUT}
+          FILES_CHANGED=$(gh pr diff $PR_NUMBER --repo $REPO --name-only 2>/dev/null | wc -l || echo "0")
+          LINES_CHANGED=$(echo "$DIFF_OUTPUT" | grep -c "^[+-]" || echo "0")
           
-          # Count changed files
-          FILES_CHANGED=$(gh pr diff $PR_NUMBER --repo ${{ github.repository }} --name-only 2>/dev/null | wc -l || echo "0")
-          
-          # Count lines changed
-          LINES_ADDED=$(echo "$DIFF_OUTPUT" | grep -c "^+" || echo "0")
-          LINES_REMOVED=$(echo "$DIFF_OUTPUT" | grep -c "^-" || echo "0")
-          TOTAL_LINES=$((LINES_ADDED + LINES_REMOVED))
-          
-          echo "PR Analysis Results:"
-          echo "- Diff size: $DIFF_SIZE characters"
-          echo "- Files changed: $FILES_CHANGED"
-          echo "- Lines changed: $TOTAL_LINES"
-          
-          # Determine review strategy based on size
-          if [ $DIFF_SIZE -gt 50000 ] || [ $FILES_CHANGED -gt 20 ] || [ $TOTAL_LINES -gt 1000 ]; then
-            echo "Large PR detected - using focused review strategy"
-            echo "review-strategy=focused" >> $GITHUB_OUTPUT
+          # Determine review strategy
+          if [ $DIFF_SIZE -gt 50000 ] || [ $FILES_CHANGED -gt 20 ] || [ $LINES_CHANGED -gt 1000 ]; then
+            STRATEGY="focused"
+            echo "🎯 Large PR detected - using focused review"
           else
-            echo "Standard PR size - using comprehensive review"
-            echo "review-strategy=comprehensive" >> $GITHUB_OUTPUT
+            STRATEGY="comprehensive"
+            echo "🔍 Standard PR - using comprehensive review"
           fi
           
-          echo "diff-size=$DIFF_SIZE" >> $GITHUB_OUTPUT
-          echo "files-changed=$FILES_CHANGED" >> $GITHUB_OUTPUT
-          echo "lines-changed=$TOTAL_LINES" >> $GITHUB_OUTPUT
+          echo "strategy=$STRATEGY" >> $GITHUB_OUTPUT
+          echo "stats=Files: $FILES_CHANGED, Lines: $LINES_CHANGED, Size: $DIFF_SIZE chars" >> $GITHUB_OUTPUT
+          
+          echo "📊 PR Analysis:"
+          echo "- Files changed: $FILES_CHANGED"
+          echo "- Lines changed: $LINES_CHANGED"
+          echo "- Diff size: $DIFF_SIZE characters"
+          echo "- Strategy: $STRATEGY"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  claude-review:
+    needs: analyze-pr
+    if: needs.analyze-pr.outputs.should-review == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      review-result: ${{ steps.process.outputs.result }}
+      has-issues: ${{ steps.process.outputs.has-issues }}
+      issue-count: ${{ steps.process.outputs.issue-count }}
+      review-type: ${{ steps.process.outputs.review-type }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Run Claude Code Review
         id: claude-review
         continue-on-error: true
-        if: steps.get-iteration.outputs.max-iterations-reached == 'false'
         uses: anthropics/claude-code-action@beta
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          
           direct_prompt: |
-            ${{ steps.pr-analysis.outputs.review-strategy == 'focused' &&
-            'Please conduct a FOCUSED code review of this pull request, prioritizing critical issues only due to PR size.
+            ${{ needs.analyze-pr.outputs.review-strategy == 'focused' && 
+            'Please conduct a FOCUSED code review prioritizing critical issues only.
             
             **Focus ONLY on:**
-            1. **Critical Security Issues** - XSS, injection vulnerabilities, data exposure
-            2. **Major Bugs** - Logic errors, null pointer exceptions, crashes
-            3. **Performance Problems** - Memory leaks, inefficient algorithms, blocking operations
-            
-            **Skip:** Minor style issues, documentation, minor refactoring suggestions
+            1. **Security Issues** - XSS, injection, data exposure
+            2. **Critical Bugs** - Logic errors, crashes, null pointer exceptions
+            3. **Performance Problems** - Memory leaks, blocking operations
             
             **Output Format:**
             If critical issues found:
@@ -142,516 +143,352 @@ jobs:
             ||
             'Please conduct a comprehensive code review of this pull request.
             
-            **Review Focus Areas:**
-            1. **Code Quality & Best Practices**
-            2. **Potential Issues & Bugs**
-            3. **Performance Considerations**
-            4. **Security Concerns**
-            5. **Testing & Maintainability**
+            **Review Areas:**
+            1. Code Quality & Best Practices
+            2. Potential Issues & Bugs
+            3. Performance Considerations
+            4. Security Concerns
+            5. Testing & Maintainability
             
             **Output Format:**
             ## 📋 Code Review Summary
             
             ### ✅ Positive Aspects
-            [List what is done well]
+            [What is done well]
             
             ### 🔧 Issues Found
-            [For each issue, provide:]
             File: path/to/file.ext:line
             Issue: Brief description
             Impact: High/Medium/Low
-            Suggestion: Specific improvement recommendation
+            Suggestion: Specific improvement
             
             ### 📈 Improvement Opportunities
-            [List non-critical improvements]
-            
-            ### 🎯 Action Items
-            [Prioritized list of specific tasks to address]
+            [Non-critical improvements]
             
             **Important:** If no significant issues, respond with "✅ **Code Review Complete** - No significant issues found."' }}
+          
+          allowed_tools: ${{ needs.analyze-pr.outputs.review-strategy == 'focused' && 'Bash(npm run lint)' || 'Bash(npm run test),Bash(npm run lint),Bash(npm run typecheck),Bash(npm run build)' }}
 
-          allowed_tools: ${{ steps.pr-analysis.outputs.review-strategy == 'focused' && 'Bash(npm run lint)' || 'Bash(npm run test),Bash(npm run lint),Bash(npm run typecheck),Bash(npm run build)' }}
-
-      - name: Handle Claude Review Results
-        id: review-handler
-        if: steps.get-iteration.outputs.max-iterations-reached == 'false'
+      - name: Process Review Results
+        id: process
         run: |
-          echo "=== Claude Review Analysis ==="
-          echo "Action outcome: ${{ steps.claude-review.outcome }}"
-          echo "Action conclusion: ${{ steps.claude-review.conclusion }}"
-          
           REVIEW_OUTPUT="${{ steps.claude-review.outputs.response }}"
-          echo "Raw response length: ${#REVIEW_OUTPUT}"
           
-          # Check if Claude action succeeded and returned content
-          if [ "${{ steps.claude-review.outcome }}" = "success" ] && [ -n "$REVIEW_OUTPUT" ] && [ "$REVIEW_OUTPUT" != "null" ]; then
-            echo "✅ Claude review completed successfully"
-            echo "Response preview (first 200 chars):"
-            echo "$REVIEW_OUTPUT" | head -c 200
-            echo "..."
+          # Handle Claude action failure
+          if [ "${{ steps.claude-review.outcome }}" != "success" ] || [ -z "$REVIEW_OUTPUT" ] || [ "$REVIEW_OUTPUT" = "null" ]; then
+            echo "⚠️ Claude review failed - creating fallback review"
             
-            # Save successful review
-            echo "$REVIEW_OUTPUT" > /tmp/review_output.md
-            echo "review-status=success" >> $GITHUB_OUTPUT
-            
-          else
-            echo "⚠️ Claude review failed or returned empty response"
-            echo "Generating fallback review..."
-            
-            # Create comprehensive fallback review
-            PR_NUMBER="${{ github.event.pull_request.number || github.event.inputs.pr_number }}"
-            DIFF_SIZE="${{ steps.pr-analysis.outputs.diff-size }}"
-            FILES_CHANGED="${{ steps.pr-analysis.outputs.files-changed }}"
-            LINES_CHANGED="${{ steps.pr-analysis.outputs.lines-changed }}"
-            
-            FALLBACK_REVIEW="## 🤖 Automated Review Status
+            FALLBACK_REVIEW="## 🤖 Manual Review Required
 
             **⚠️ AI Review Unavailable**
             
-            The automated Claude code review could not complete due to technical limitations.
+            The automated Claude code review could not complete.
             
             ### 📊 PR Statistics
-            - **Files Changed:** $FILES_CHANGED
-            - **Lines Changed:** $LINES_CHANGED
-            - **Diff Size:** $DIFF_SIZE characters
+            ${{ needs.analyze-pr.outputs.pr-stats }}
             
-            ### 🔍 Recommended Manual Review Areas
-            
-            **High Priority:**
-            - Security vulnerabilities (XSS, injection, data exposure)
-            - Logic errors and edge cases
-            - Error handling and null checks
-            
-            **Medium Priority:**
-            - Performance implications
-            - Code organization and maintainability
-            - Test coverage
-            
-            **Low Priority:**
-            - Code style and formatting
-            - Documentation updates
-            - Minor refactoring opportunities
+            ### 🔍 Manual Review Checklist
+            - [ ] Security vulnerabilities (XSS, injection, data exposure)
+            - [ ] Logic errors and edge cases
+            - [ ] Error handling and null checks
+            - [ ] Performance implications
+            - [ ] Test coverage
+            - [ ] Code style and formatting
             
             ### 🎯 Next Steps
-            1. **Manual code review required**
-            2. Run automated tests: \`npm run test\`
+            1. Complete manual code review
+            2. Run tests: \`npm run test\`
             3. Check linting: \`npm run lint\`
-            4. Verify type checking: \`npm run typecheck\`
+            4. Verify types: \`npm run typecheck\`
             
-            ### 🔧 Possible Technical Issues
-            - PR size may exceed AI context limits ($DIFF_SIZE chars)
-            - Network connectivity issues
-            - API rate limiting or quota limits
-            - Action version compatibility
-            
-            **Manual review is recommended for this PR.**"
+            **Manual review is required for this PR.**"
             
             echo "$FALLBACK_REVIEW" > /tmp/review_output.md
-            echo "review-status=fallback" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Process Claude feedback
-        id: process-feedback
-        if: steps.get-iteration.outputs.max-iterations-reached == 'false'
-        run: |
-          # Read the review output (either from Claude or fallback)
-          REVIEW_OUTPUT=$(cat /tmp/review_output.md)
-          REVIEW_STATUS="${{ steps.review-handler.outputs.review-status }}"
-          
-          echo "=== Feedback Processing ==="
-          echo "Review status: $REVIEW_STATUS"
-          echo "Review output length: ${#REVIEW_OUTPUT}"
-          
-          # Handle fallback reviews (always create issue for manual review)
-          if [ "$REVIEW_STATUS" = "fallback" ]; then
-            echo "Fallback review detected - creating issue for manual review"
-            echo "has-feedback=true" >> $GITHUB_OUTPUT
-            echo "feedback-count=1" >> $GITHUB_OUTPUT
-            echo "review-type=fallback" >> $GITHUB_OUTPUT
+            echo "result=fallback" >> $GITHUB_OUTPUT
+            echo "has-issues=true" >> $GITHUB_OUTPUT
+            echo "issue-count=1" >> $GITHUB_OUTPUT
+            echo "review-type=manual" >> $GITHUB_OUTPUT
             exit 0
           fi
           
-          # Process successful Claude reviews
-          echo "Processing successful Claude review..."
-          echo "First 300 characters of review:"
-          echo "$REVIEW_OUTPUT" | head -c 300
-          echo "..."
+          # Process successful Claude review
+          echo "✅ Claude review completed successfully"
+          echo "$REVIEW_OUTPUT" > /tmp/review_output.md
           
-          # Check if Claude found issues or if review is complete
+          # Check if review found issues
           if echo "$REVIEW_OUTPUT" | grep -q "Code Review Complete.*No.*issues found\|No critical issues found"; then
-            echo "has-feedback=false" >> $GITHUB_OUTPUT
-            echo "feedback-count=0" >> $GITHUB_OUTPUT
+            echo "result=success" >> $GITHUB_OUTPUT
+            echo "has-issues=false" >> $GITHUB_OUTPUT
+            echo "issue-count=0" >> $GITHUB_OUTPUT
             echo "review-type=complete" >> $GITHUB_OUTPUT
-            echo "✅ Code review complete - no issues found!"
+            echo "🎉 No issues found!"
           else
-            echo "Issues or feedback detected, analyzing content..."
+            # Count issues found
+            ISSUE_COUNT=$(echo "$REVIEW_OUTPUT" | grep -c "^File:" || echo "1")
             
-            # Multiple methods to count issues
-            ISSUE_COUNT_FILES=$(echo "$REVIEW_OUTPUT" | grep -c "^File:" || echo "0")
-            ISSUE_COUNT_IMPACT=$(echo "$REVIEW_OUTPUT" | grep -c "Impact: High\|Impact: Medium\|Impact: Low" || echo "0")
-            ISSUE_COUNT_CRITICAL=$(echo "$REVIEW_OUTPUT" | grep -c "🚨 Critical Issues Found" || echo "0")
-            
-            echo "Detection results:"
-            echo "- File pattern matches: $ISSUE_COUNT_FILES"
-            echo "- Impact pattern matches: $ISSUE_COUNT_IMPACT"
-            echo "- Critical issues section: $ISSUE_COUNT_CRITICAL"
-            
-            # Use the highest count from different detection methods
-            ISSUE_COUNT=$ISSUE_COUNT_FILES
-            if [ $ISSUE_COUNT_IMPACT -gt $ISSUE_COUNT ]; then
-              ISSUE_COUNT=$ISSUE_COUNT_IMPACT
-            fi
-            if [ $ISSUE_COUNT_CRITICAL -gt 0 ]; then
-              ISSUE_COUNT=$((ISSUE_COUNT + ISSUE_COUNT_CRITICAL))
-            fi
-            
-            if [ $ISSUE_COUNT -gt 0 ]; then
-              echo "has-feedback=true" >> $GITHUB_OUTPUT
-              echo "feedback-count=$ISSUE_COUNT" >> $GITHUB_OUTPUT
-              echo "review-type=issues-found" >> $GITHUB_OUTPUT
-              echo "Found $ISSUE_COUNT issues to address"
+            # Determine review type
+            if echo "$REVIEW_OUTPUT" | grep -q "🚨 Critical Issues Found\|Impact: High"; then
+              REVIEW_TYPE="critical"
+            elif echo "$REVIEW_OUTPUT" | grep -q "🔧 Issues Found\|Impact: Medium"; then
+              REVIEW_TYPE="issues"
             else
-              # Check for improvement opportunities or action items
-              if echo "$REVIEW_OUTPUT" | grep -q "📈 Improvement Opportunities\|🎯 Action Items\|Improvement\|Action Items\|🔧 Issues Found"; then
-                echo "has-feedback=true" >> $GITHUB_OUTPUT
-                echo "feedback-count=1" >> $GITHUB_OUTPUT
-                echo "review-type=improvements" >> $GITHUB_OUTPUT
-                echo "Found improvement opportunities or structured feedback"
-              else
-                echo "has-feedback=false" >> $GITHUB_OUTPUT
-                echo "feedback-count=0" >> $GITHUB_OUTPUT
-                echo "review-type=complete" >> $GITHUB_OUTPUT
-                echo "No actionable feedback found"
-              fi
+              REVIEW_TYPE="improvements"
             fi
+            
+            echo "result=success" >> $GITHUB_OUTPUT
+            echo "has-issues=true" >> $GITHUB_OUTPUT
+            echo "issue-count=$ISSUE_COUNT" >> $GITHUB_OUTPUT
+            echo "review-type=$REVIEW_TYPE" >> $GITHUB_OUTPUT
+            echo "📋 Found $ISSUE_COUNT issue(s) - type: $REVIEW_TYPE"
           fi
 
-      - name: Create improvement issue
-        if: steps.process-feedback.outputs.has-feedback == 'true'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ steps.get-iteration.outputs.pr-number }}
-          ITERATION: ${{ steps.get-iteration.outputs.iteration }}
-          FEEDBACK_COUNT: ${{ steps.process-feedback.outputs.feedback-count }}
+      - name: Upload Review Results
+        if: steps.process.outputs.has-issues == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: review-results-${{ needs.analyze-pr.outputs.pr-number }}
+          path: /tmp/review_output.md
+          retention-days: 7
+
+  create-feedback-issue:
+    needs: [analyze-pr, claude-review]
+    if: needs.claude-review.outputs.has-issues == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    
+    steps:
+      - name: Download Review Results
+        uses: actions/download-artifact@v4
+        with:
+          name: review-results-${{ needs.analyze-pr.outputs.pr-number }}
+          path: /tmp
+
+      - name: Create Feedback Issue
+        id: create-issue
         run: |
-          # Ensure we're in the repository root
-          cd $GITHUB_WORKSPACE
-          
-          # Read the review output
           REVIEW_OUTPUT=$(cat /tmp/review_output.md)
+          REVIEW_TYPE="${{ needs.claude-review.outputs.review-type }}"
+          ITERATION="${{ needs.analyze-pr.outputs.iteration }}"
+          ISSUE_COUNT="${{ needs.claude-review.outputs.issue-count }}"
           
-          echo "DEBUG: Creating issue for PR #${PR_NUMBER}, Iteration ${ITERATION}"
-          echo "DEBUG: Feedback count: ${FEEDBACK_COUNT}"
-          echo "DEBUG: Review output file size: $(wc -c < /tmp/review_output.md) bytes"
-          
-          # Get review type for customized messaging
-          REVIEW_TYPE="${{ steps.process-feedback.outputs.review-type }}"
-          
-          # Create dynamic issue title based on review type
+          # Create issue title based on type
           case "$REVIEW_TYPE" in
-            "fallback")
-              ISSUE_TITLE="⚠️ Manual Review Required - PR #${PR_NUMBER} (Iteration ${ITERATION})"
-              ;;
-            "issues-found")
-              ISSUE_TITLE="🔍 Code Issues Found - PR #${PR_NUMBER} (Iteration ${ITERATION})"
-              ;;
-            "improvements")
-              ISSUE_TITLE="📈 Code Improvements Suggested - PR #${PR_NUMBER} (Iteration ${ITERATION})"
-              ;;
-            *)
-              ISSUE_TITLE="🔍 Code Review Feedback - PR #${PR_NUMBER} (Iteration ${ITERATION})"
-              ;;
+            "critical") TITLE="🚨 Critical Issues Found - PR #$PR_NUMBER (Iteration $ITERATION)" ;;
+            "issues") TITLE="🔍 Code Issues Found - PR #$PR_NUMBER (Iteration $ITERATION)" ;;
+            "improvements") TITLE="📈 Improvements Suggested - PR #$PR_NUMBER (Iteration $ITERATION)" ;;
+            "manual") TITLE="⚠️ Manual Review Required - PR #$PR_NUMBER (Iteration $ITERATION)" ;;
+            *) TITLE="🔍 Code Review Feedback - PR #$PR_NUMBER (Iteration $ITERATION)" ;;
           esac
           
-          # Create customized issue body based on review type
-          if [ "$REVIEW_TYPE" = "fallback" ]; then
+          # Create issue body
+          if [ "$REVIEW_TYPE" = "manual" ]; then
             ISSUE_BODY="## ⚠️ Manual Code Review Required
 
-          **Pull Request:** #${PR_NUMBER}
-          **Review Iteration:** ${ITERATION}
-          **Status:** AI Review Failed - Manual Review Needed
+          **Pull Request:** #$PR_NUMBER
+          **Iteration:** $ITERATION/$ITERATION_LIMIT
+          **Status:** AI Review Failed
           **Timestamp:** $(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
           ---
 
-          ${REVIEW_OUTPUT}
+          $REVIEW_OUTPUT
 
           ---
 
-          ## 🎯 Immediate Actions Required
-
-          1. **Manual code review is essential** - AI review could not complete
-          2. **Run local checks:**
-             - \`npm run test\` - Run all tests
-             - \`npm run lint\` - Check code style
-             - \`npm run typecheck\` - Verify types
-          3. **Focus on critical areas** listed in the review above
-          4. **Close this issue** once manual review is complete
-
-          ## 📊 Review Progress
-
-          - **Current Iteration:** ${ITERATION}/${MAX_REVIEW_ITERATIONS}
-          - **Status:** 🔄 Manual review required
-          - **Next Step:** Complete manual review and close issue
+          ## 🎯 Actions Required
+          1. Complete manual code review
+          2. Run local checks: \`npm run test && npm run lint && npm run typecheck\`
+          3. Close this issue when review is complete
 
           ---
-          *This issue was created because automated AI review failed. Manual review is required.*"
+          *Manual review required due to AI limitations.*"
           else
-            ISSUE_BODY="## 🔍 Automated Code Review Feedback
+            ISSUE_BODY="## 🤖 Automated Code Review Feedback
 
-          **Pull Request:** #${PR_NUMBER}
-          **Review Iteration:** ${ITERATION}
-          **Issues Found:** ${FEEDBACK_COUNT}
-          **Review Type:** ${REVIEW_TYPE}
+          **Pull Request:** #$PR_NUMBER
+          **Iteration:** $ITERATION/$ITERATION_LIMIT
+          **Issues Found:** $ISSUE_COUNT
+          **Type:** $REVIEW_TYPE
           **Timestamp:** $(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
           ---
 
-          ${REVIEW_OUTPUT}
+          $REVIEW_OUTPUT
 
           ---
 
-          ## 🤖 Next Steps
+          ## 🚀 Auto-Fix Available
+          **Quick Fix:** Comment \`@claude\` below to automatically fix these issues.
 
-          This issue contains automated code review feedback. To trigger automatic fixes:
+          **What happens next:**
+          1. Claude analyzes each issue
+          2. Creates a PR with fixes
+          3. Review runs again after fixes are merged
+          4. Process continues until no issues remain
 
-          1. **Comment \`@claude\`** in this issue to start the auto-fix process
-          2. Claude will analyze each issue and create a pull request with fixes
-          3. Once fixes are applied, this review process will run again
-          4. The cycle continues until no more improvements are needed
-
-          ## 📊 Review Progress
-
-          - **Current Iteration:** ${ITERATION}/${MAX_REVIEW_ITERATIONS}
-          - **Status:** 🔄 Awaiting fixes
-          - **Auto-fix:** Comment \`@claude\` to trigger
+          **Estimated Fix Time:** 2-5 minutes
 
           ---
-          *This issue was automatically created by the Claude Code Review workflow.*"
+          *Auto-generated by Claude Code Review workflow*"
           fi
-
-          # Create the issue with error handling
-          echo "DEBUG: Attempting to create GitHub issue..."
-          echo "DEBUG: Title: $ISSUE_TITLE"
-          echo "DEBUG: Labels: code-review,auto-fix,pr-${PR_NUMBER},iteration-${ITERATION}"
           
-          # Try to create issue with assignee first
-          if gh issue create \
-            --repo ${{ github.repository }} \
-            --title "$ISSUE_TITLE" \
+          # Create the issue
+          echo "Creating issue: $TITLE"
+          ISSUE_URL=$(gh issue create \
+            --repo $REPO \
+            --title "$TITLE" \
             --body "$ISSUE_BODY" \
-            --label "code-review,auto-fix,pr-${PR_NUMBER},iteration-${ITERATION}" \
-            --assignee "${{ github.event.pull_request.user.login || github.actor }}" 2>/dev/null; then
-            echo "✅ Successfully created issue with assignee"
-          else
-            echo "⚠️ Failed to create issue with assignee, trying without..."
-            if gh issue create \
-              --repo ${{ github.repository }} \
-              --title "$ISSUE_TITLE" \
-              --body "$ISSUE_BODY" \
-              --label "code-review,auto-fix,pr-${PR_NUMBER},iteration-${ITERATION}" 2>/dev/null; then
-              echo "✅ Successfully created issue without assignee"
-            else
-              echo "❌ Failed to create issue completely. Trying with minimal approach..."
-              gh issue create \
-                --repo ${{ github.repository }} \
-                --title "$ISSUE_TITLE" \
-                --body "$ISSUE_BODY"
-              echo "✅ Created basic issue (labels may need manual addition)"
-            fi
+            --label "claude-review,pr-$PR_NUMBER,iteration-$ITERATION,$REVIEW_TYPE" \
+            --assignee "@me" 2>/dev/null || \
+          gh issue create \
+            --repo $REPO \
+            --title "$TITLE" \
+            --body "$ISSUE_BODY" \
+            --label "claude-review,pr-$PR_NUMBER,iteration-$ITERATION,$REVIEW_TYPE")
+          
+          ISSUE_NUMBER=$(echo "$ISSUE_URL" | grep -o '[0-9]\+$')
+          echo "issue-number=$ISSUE_NUMBER" >> $GITHUB_OUTPUT
+          echo "✅ Created issue #$ISSUE_NUMBER"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Add Priority Labels
+        if: steps.create-issue.outputs.issue-number
+        run: |
+          ISSUE_NUMBER="${{ steps.create-issue.outputs.issue-number }}"
+          REVIEW_OUTPUT=$(cat /tmp/review_output.md)
+          LABELS=""
+          
+          # Add priority labels based on content
+          if echo "$REVIEW_OUTPUT" | grep -qi "security\|vulnerability\|xss\|injection"; then
+            LABELS="$LABELS,security,high-priority"
+          fi
+          if echo "$REVIEW_OUTPUT" | grep -qi "critical\|🚨\|Impact: High"; then
+            LABELS="$LABELS,critical,high-priority"
+          fi
+          if echo "$REVIEW_OUTPUT" | grep -qi "bug\|error\|crash"; then
+            LABELS="$LABELS,bug,medium-priority"
+          fi
+          if echo "$REVIEW_OUTPUT" | grep -qi "performance\|slow\|optimization"; then
+            LABELS="$LABELS,performance"
           fi
           
-          # Get the issue number from the most recent issue
-          ISSUE_NUMBER=$(gh issue list \
-            --repo ${{ github.repository }} \
-            --limit 1 \
-            --state open \
-            --search "author:app/github-actions" \
-            --json number \
-            --jq '.[0].number' 2>/dev/null || echo "")
-          
-          if [ -z "$ISSUE_NUMBER" ]; then
-            echo "⚠️ Could not determine issue number, using fallback method..."
-            ISSUE_NUMBER=$(gh issue list \
-              --repo ${{ github.repository }} \
-              --limit 1 \
-              --state open \
-              --label "code-review" 2>/dev/null | head -1 | awk '{print $1}' || echo "unknown")
+          if [ -n "$LABELS" ]; then
+            gh issue edit $ISSUE_NUMBER --repo $REPO --add-label "${LABELS#,}" || true
+            echo "✅ Added priority labels: ${LABELS#,}"
           fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Comment on PR
+        if: steps.create-issue.outputs.issue-number
+        run: |
+          ISSUE_NUMBER="${{ steps.create-issue.outputs.issue-number }}"
+          REVIEW_TYPE="${{ needs.claude-review.outputs.review-type }}"
+          ITERATION="${{ needs.analyze-pr.outputs.iteration }}"
+          ISSUE_COUNT="${{ needs.claude-review.outputs.issue-count }}"
           
-          echo "Issue number determined: $ISSUE_NUMBER"
-          
-          # Add priority labels based on review type and content
-          PRIORITY_LABELS=""
-          
-          # Add review type label
           case "$REVIEW_TYPE" in
-            "fallback")
-              PRIORITY_LABELS="${PRIORITY_LABELS},manual-review-required,high-priority"
-              ;;
-            "issues-found")
-              PRIORITY_LABELS="${PRIORITY_LABELS},issues-detected"
-              ;;
+            "critical")
+              MESSAGE="🚨 **Critical Issues Found** (Iteration $ITERATION)
+
+          Found $ISSUE_COUNT critical issue(s) requiring immediate attention.
+          
+          **📋 Details:** Issue #$ISSUE_NUMBER
+          **🚀 Quick Fix:** Comment \`@claude\` in the issue to auto-fix
+          
+          Please address these issues before merging." ;;
+            
+            "issues")
+              MESSAGE="🔍 **Code Issues Found** (Iteration $ITERATION)
+
+          Found $ISSUE_COUNT issue(s) that should be addressed.
+          
+          **📋 Details:** Issue #$ISSUE_NUMBER  
+          **🚀 Quick Fix:** Comment \`@claude\` in the issue to auto-fix" ;;
+            
             "improvements")
-              PRIORITY_LABELS="${PRIORITY_LABELS},improvements-suggested,low-priority"
-              ;;
+              MESSAGE="📈 **Code Improvements Available** (Iteration $ITERATION)
+
+          Found $ISSUE_COUNT improvement opportunity(ies).
+          
+          **📋 Details:** Issue #$ISSUE_NUMBER
+          **🚀 Optional Fix:** Comment \`@claude\` in the issue to auto-apply" ;;
+            
+            "manual")
+              MESSAGE="⚠️ **Manual Review Required** (Iteration $ITERATION)
+
+          AI review could not complete. Manual review needed.
+          
+          **📋 Guidance:** Issue #$ISSUE_NUMBER
+          **🔧 Next Steps:** Follow the manual review checklist" ;;
+            
+            *)
+              MESSAGE="🔍 **Code Review Complete** (Iteration $ITERATION)
+
+          **📋 Feedback:** Issue #$ISSUE_NUMBER
+          **🚀 Auto-Fix:** Comment \`@claude\` to apply fixes" ;;
           esac
           
-          # Add content-based labels
-          if echo "$REVIEW_OUTPUT" | grep -qi "security\|vulnerability\|xss\|injection\|critical.*security"; then
-            PRIORITY_LABELS="${PRIORITY_LABELS},security,high-priority"
-          fi
-          if echo "$REVIEW_OUTPUT" | grep -qi "bug\|error\|crash\|fail\|critical.*bug"; then
-            PRIORITY_LABELS="${PRIORITY_LABELS},bug,medium-priority"
-          fi
-          if echo "$REVIEW_OUTPUT" | grep -qi "performance\|slow\|optimization\|memory.*leak"; then
-            PRIORITY_LABELS="${PRIORITY_LABELS},performance"
-          fi
-          if echo "$REVIEW_OUTPUT" | grep -qi "🚨\|critical.*issues\|Impact: High"; then
-            PRIORITY_LABELS="${PRIORITY_LABELS},critical,high-priority"
-          fi
-          
-          # Add PR size context labels
-          DIFF_SIZE="${{ steps.pr-analysis.outputs.diff-size }}"
-          FILES_CHANGED="${{ steps.pr-analysis.outputs.files-changed }}"
-          if [ "$DIFF_SIZE" -gt 50000 ] || [ "$FILES_CHANGED" -gt 20 ]; then
-            PRIORITY_LABELS="${PRIORITY_LABELS},large-pr"
-          fi
-          
-          if [ -n "$PRIORITY_LABELS" ] && [ "$ISSUE_NUMBER" != "unknown" ] && [ -n "$ISSUE_NUMBER" ]; then
-            echo "Adding priority labels: ${PRIORITY_LABELS#,}"
-            if gh issue edit $ISSUE_NUMBER --repo ${{ github.repository }} --add-label "${PRIORITY_LABELS#,}" 2>/dev/null; then
-              echo "✅ Successfully added priority labels"
-            else
-              echo "⚠️ Could not add priority labels to issue #$ISSUE_NUMBER"
-            fi
-          else
-            echo "⚠️ Skipping label addition - issue number: $ISSUE_NUMBER, labels: $PRIORITY_LABELS"
-          fi
+          gh pr comment $PR_NUMBER --repo $REPO --body "$MESSAGE"
+          echo "✅ Commented on PR #$PR_NUMBER"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-          # Comment on the original PR with review type context
-          if [ "$ISSUE_NUMBER" != "unknown" ] && [ -n "$ISSUE_NUMBER" ]; then
-            case "$REVIEW_TYPE" in
-              "fallback")
-                PR_COMMENT="⚠️ **Manual Review Required** (Iteration ${ITERATION})
-
-            The automated AI code review could not complete due to technical limitations. Created issue #${ISSUE_NUMBER} for manual review.
-
-            **Immediate Actions:**
-            - Review the issue for detailed analysis and recommendations
-            - Run local tests: \`npm run test && npm run lint && npm run typecheck\`
-            - Complete manual code review focusing on critical areas
-            - Close issue #${ISSUE_NUMBER} when review is complete
-
-            **PR Stats:** ${FILES_CHANGED} files changed, ${DIFF_SIZE} characters in diff"
-                ;;
-              "issues-found")
-                PR_COMMENT="🔍 **Code Issues Found** (Iteration ${ITERATION})
-
-            Found ${FEEDBACK_COUNT} issue(s) that need attention. Created issue #${ISSUE_NUMBER} with detailed feedback.
-
-            **To trigger automatic fixes:** Comment \`@claude\` in issue #${ISSUE_NUMBER}
-
-            The review will automatically re-run after fixes are applied."
-                ;;
-              "improvements")
-                PR_COMMENT="📈 **Code Improvements Suggested** (Iteration ${ITERATION})
-
-            Found improvement opportunities. Created issue #${ISSUE_NUMBER} with suggestions.
-
-            **To trigger automatic fixes:** Comment \`@claude\` in issue #${ISSUE_NUMBER}
-
-            These are non-critical improvements that can enhance code quality."
-                ;;
-              *)
-                PR_COMMENT="🔍 **Code Review Complete** (Iteration ${ITERATION})
-
-            Found ${FEEDBACK_COUNT} item(s) for improvement. Created issue #${ISSUE_NUMBER} with detailed feedback.
-
-            **To trigger automatic fixes:** Comment \`@claude\` in issue #${ISSUE_NUMBER}
-
-            The review will automatically re-run after fixes are applied."
-                ;;
-            esac
-
-            if gh pr comment $PR_NUMBER --repo ${{ github.repository }} --body "$PR_COMMENT" 2>/dev/null; then
-              echo "✅ Successfully commented on PR #$PR_NUMBER"
-            else
-              echo "⚠️ Could not comment on PR #$PR_NUMBER"
-            fi
-          else
-            # Fallback comment when issue number is unknown
-            PR_COMMENT="⚠️ **Code Review Process Completed** (Iteration ${ITERATION})
-
-            The automated code review has been completed, but there was an issue determining the feedback issue number.
-
-            **Next Steps:**
-            - Check the repository issues for the latest code review feedback
-            - Look for issues with labels: \`code-review\`, \`pr-${PR_NUMBER}\`, \`iteration-${ITERATION}\`
-            - Complete any recommended actions from the review
-
-            **Review Type:** ${REVIEW_TYPE}"
-
-            if gh pr comment $PR_NUMBER --repo ${{ github.repository }} --body "$PR_COMMENT" 2>/dev/null; then
-              echo "✅ Successfully posted fallback comment on PR #$PR_NUMBER"
-            else
-              echo "⚠️ Could not comment on PR #$PR_NUMBER"
-            fi
-          fi
-
-  check-completion:
-    needs: claude-review
-    if: needs.claude-review.outputs.has-feedback == 'false'
+  mark-complete:
+    needs: [analyze-pr, claude-review]
+    if: needs.claude-review.outputs.has-issues == 'false'
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
     
     steps:
-      - name: Mark review as complete
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ needs.claude-review.outputs.pr-number || github.event.pull_request.number }}
-          ITERATION: ${{ needs.claude-review.outputs.review-iteration }}
+      - name: Mark Review Complete
         run: |
-          # Comment on PR that review is complete
-          gh pr comment $PR_NUMBER --repo ${{ github.repository }} --body "✅ **Code Review Complete!**
+          ITERATION="${{ needs.analyze-pr.outputs.iteration }}"
+          
+          gh pr comment $PR_NUMBER --repo $REPO --body "✅ **Code Review Complete!** (Iteration $ITERATION)
 
-          🎉 **All quality checks passed!** No significant issues or improvements needed.
+          🎉 **All quality checks passed!** No significant issues found.
 
           **Review Summary:**
-          - **Final Iteration:** ${ITERATION}
-          - **Status:** ✅ Approved
-          - **Quality:** Meets all standards
+          - Status: ✅ Approved
+          - Quality: Meets all standards
+          - Ready for merge: 🚀
 
-          The code is ready for merge! 🚀"
-
-          echo "✅ Code review process completed successfully for PR #${PR_NUMBER}"
+          Excellent work! The code is ready to merge."
+          
+          echo "✅ Marked PR #$PR_NUMBER as complete"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   trigger-recheck:
-    # This job runs when issues are closed (presumably fixed)
-    if: github.event_name == 'issues' && github.event.action == 'closed' && contains(github.event.issue.labels.*.name, 'code-review')
+    if: github.event_name == 'issues' && github.event.action == 'closed' && contains(github.event.issue.labels.*.name, 'claude-review')
     runs-on: ubuntu-latest
     permissions:
       actions: write
     
     steps:
-      - name: Extract PR number and trigger re-review
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Trigger Re-Review
         run: |
           # Extract PR number from issue labels
           ISSUE_LABELS="${{ join(github.event.issue.labels.*.name, ' ') }}"
-          PR_NUMBER=$(echo "$ISSUE_LABELS" | grep -o 'pr-[0-9]\+' | head -1 | cut -d'-' -f2)
+          EXTRACTED_PR=$(echo "$ISSUE_LABELS" | grep -o 'pr-[0-9]\+' | head -1 | cut -d'-' -f2)
           
-          if [ -n "$PR_NUMBER" ]; then
-            echo "Triggering re-review for PR #${PR_NUMBER}"
+          if [ -n "$EXTRACTED_PR" ]; then
+            echo "🔄 Triggering re-review for PR #$EXTRACTED_PR"
             
-            # Trigger the workflow again for this PR
             gh workflow run claude-code-review.yml \
-              --repo ${{ github.repository }} \
-              --field pr_number="$PR_NUMBER"
+              --repo $REPO \
+              --field pr_number="$EXTRACTED_PR"
             
-            echo "✅ Re-review triggered for PR #${PR_NUMBER}"
+            echo "✅ Re-review triggered successfully"
           else
-            echo "Could not extract PR number from issue labels"
+            echo "❌ Could not extract PR number from issue labels"
+            exit 1
           fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
