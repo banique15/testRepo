@@ -544,7 +544,7 @@ jobs:
                           desc = issue['description'][:80] + '...' if len(issue['description']) > 80 else issue['description']
                           if created:
                               print(f\"- {issue['emoji']} **{issue['category'].title()}**: {desc}\")
-                              print(f\"  📁 File: \`{issue['file_path']}\` → [Issue #{created['number']}](../../issues/{created['number']})\")
+                              print(f\"  📁 File: \`{issue['file_path']}\` → [Issue #{created['number']}]({created['url']})\")
                               print()
                           else:
                               print(f\"- {issue['emoji']} **{issue['category'].title()}**: {desc}\")
@@ -560,7 +560,7 @@ jobs:
                           desc = issue['description'][:80] + '...' if len(issue['description']) > 80 else issue['description']
                           if created:
                               print(f\"- {issue['emoji']} **{issue['category'].title()}**: {desc}\")
-                              print(f\"  📁 File: \`{issue['file_path']}\` → [Issue #{created['number']}](../../issues/{created['number']})\")
+                              print(f\"  📁 File: \`{issue['file_path']}\` → [Issue #{created['number']}]({created['url']})\")
                               print()
                           else:
                               print(f\"- {issue['emoji']} **{issue['category'].title()}**: {desc}\")
@@ -576,7 +576,7 @@ jobs:
                           desc = issue['description'][:80] + '...' if len(issue['description']) > 80 else issue['description']
                           if created:
                               print(f\"- {issue['emoji']} **{issue['category'].title()}**: {desc}\")
-                              print(f\"  📁 File: \`{issue['file_path']}\` → [Issue #{created['number']}](../../issues/{created['number']})\")
+                              print(f\"  📁 File: \`{issue['file_path']}\` → [Issue #{created['number']}]({created['url']})\")
                               print()
                           else:
                               print(f\"- {issue['emoji']} **{issue['category'].title()}**: {desc}\")
