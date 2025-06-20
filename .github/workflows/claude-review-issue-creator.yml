@@ -43,21 +43,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Get changed files in PR
-        id: changed-files
-        if: steps.get-pr.outputs.pr_number
-        run: |
-          PR_NUMBER="${{ steps.get-pr.outputs.pr_number }}"
-          
-          # Get list of changed files in the PR
-          CHANGED_FILES=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/files \
-            --jq '.[].filename' | tr '\n' '|')
-          
-          echo "changed_files=$CHANGED_FILES" >> $GITHUB_OUTPUT
-          echo "Changed files in PR: $CHANGED_FILES"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Get PR number from workflow run
         id: get-pr
         run: |
@@ -78,6 +63,21 @@ jobs:
           
           echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
           echo "Found PR #$PR_NUMBER"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get changed files in PR
+        id: changed-files
+        if: steps.get-pr.outputs.pr_number
+        run: |
+          PR_NUMBER="${{ steps.get-pr.outputs.pr_number }}"
+          
+          # Get list of changed files in the PR
+          CHANGED_FILES=$(gh api repos/${{ github.repository }}/pulls/$PR_NUMBER/files \
+            --jq '.[].filename' | tr '\n' '|')
+          
+          echo "changed_files=$CHANGED_FILES" >> $GITHUB_OUTPUT
+          echo "Changed files in PR: $CHANGED_FILES"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -260,27 +260,48 @@ jobs:
                               # Try to extract file path with multiple patterns
                               file_path = 'Unknown'
                               
+                              # Get broader context for better file detection
+                              broader_context_lines = lines[max(0, i-10):min(len(lines), i+10)]
+                              broader_context = '\n'.join(broader_context_lines)
+                              
                               # Pattern 1: Files in backticks like `src/file.js`
-                              file_match = re.search(r'`([^`]+\.[a-zA-Z]+)`', context)
+                              file_match = re.search(r'`([^`]+\.[a-zA-Z0-9]+)`', broader_context)
                               if file_match:
                                   file_path = file_match.group(1)
                               else:
-                                  # Pattern 2: Files mentioned without backticks
-                                  file_match = re.search(r'(?:in|file|src/|\./)([a-zA-Z0-9_/-]+\.[a-zA-Z]+)', context, re.IGNORECASE)
+                                  # Pattern 2: Files mentioned with "in" or "file" keywords
+                                  file_match = re.search(r'(?:in|file|modified|changed|updated)\s+([a-zA-Z0-9_/-]+\.[a-zA-Z0-9]+)', broader_context, re.IGNORECASE)
                                   if file_match:
                                       file_path = file_match.group(1)
                                   else:
-                                      # Pattern 3: Look for common file extensions
-                                      file_match = re.search(r'([a-zA-Z0-9_/-]+\.(?:js|ts|jsx|tsx|py|java|cpp|c|html|css|astro|vue|php))', context, re.IGNORECASE)
-                                      if file_match:
-                                          file_path = file_match.group(1)
-                                      else:
-                                          # Pattern 4: Extract from the broader context (look in more lines)
-                                          broader_context_lines = lines[max(0, i-5):min(len(lines), i+10)]
-                                          broader_context = '\n'.join(broader_context_lines)
-                                          file_match = re.search(r'`([^`]+\.[a-zA-Z]+)`', broader_context)
+                                      # Pattern 3: Look for specific file extensions in changed files
+                                      for changed_file in changed_files:
+                                          if changed_file.lower() in broader_context.lower():
+                                              file_path = changed_file
+                                              break
+                                      
+                                      if file_path == 'Unknown':
+                                          # Pattern 4: Look for common file extensions anywhere in context
+                                          file_match = re.search(r'([a-zA-Z0-9_/-]+\.(?:astro|js|ts|jsx|tsx|py|java|cpp|c|html|css|vue|php|json|md))', broader_context, re.IGNORECASE)
                                           if file_match:
                                               file_path = file_match.group(1)
+                                          else:
+                                              # Pattern 5: If we still don't have a file, try to match against changed files by filename only
+                                              for changed_file in changed_files:
+                                                  filename = changed_file.split('/')[-1]
+                                                  if filename.lower() in broader_context.lower():
+                                                      file_path = changed_file
+                                                      break
+                              
+                              # Clean up the file path
+                              if file_path != 'Unknown':
+                                  file_path = file_path.strip('./')
+                                  # If it's just a filename, try to match it to a changed file
+                                  if '/' not in file_path:
+                                      for changed_file in changed_files:
+                                          if changed_file.endswith('/' + file_path) or changed_file == file_path:
+                                              file_path = changed_file
+                                              break
                               
                               # FILTER: Only include issues from changed files OR critical issues
                               if file_path != 'Unknown' and not is_file_in_changed_files(file_path, changed_files):
@@ -309,10 +330,16 @@ jobs:
               
               print("Debug: Claude review content preview:")
               print("=" * 50)
-              print(content[:1000])  # First 1000 characters
+              print(content[:2000])  # First 2000 characters
               print("=" * 50)
+              print(f"Debug: Total content length: {len(content)} characters")
+              print(f"Debug: Changed files available: {changed_files}")
               
               issues = extract_issues_from_text(content)
+              
+              print("Debug: Raw issues found:")
+              for i, issue in enumerate(issues):
+                  print(f"  {i+1}. {issue['category']} - {issue['file_path']} - {issue['description'][:50]}...")
               
               # Remove duplicates and apply additional filtering
               unique_issues = []
@@ -330,12 +357,15 @@ jobs:
               # Limit to maximum 5 issues to avoid spam
               if len(unique_issues) > 5:
                   print(f"Limiting to 5 most critical issues (found {len(unique_issues)})")
-                  # Sort by severity priority: security > bug > performance
-                  severity_order = {'security': 0, 'bug': 1, 'performance': 2}
+                  # Sort by severity priority: security > bug > performance > code_quality > testing > documentation
+                  severity_order = {'security': 0, 'bug': 1, 'performance': 2, 'code_quality': 3, 'testing': 4, 'documentation': 5}
                   unique_issues.sort(key=lambda x: severity_order.get(x['category'], 99))
                   unique_issues = unique_issues[:5]
               
               print(f"Final filtered issues: {len(unique_issues)}")
+              print("Debug: Final issues to create:")
+              for i, issue in enumerate(unique_issues):
+                  print(f"  {i+1}. {issue['emoji']} {issue['category']} - {issue['file_path']} - {issue['description'][:50]}...")
               
               # Output as JSON for GitHub Actions
               with open('parsed_issues.json', 'w') as f:
