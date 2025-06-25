@@ -98,17 +98,17 @@ The Lighthouse configuration is defined in [`.lighthouserc.json`](../.lighthouse
 
 ## Test Results and Reporting
 
-### Artifacts Generated
-1. **Screenshots** - Full-page captures for each test
-2. **JSON Reports** - Detailed test results and metrics
-3. **HTML Reports** - Visual dashboard with test summaries
-4. **Lighthouse Reports** - Performance and quality audits
+### Results Generated
+1. **PR Comments** - Comprehensive test summaries with pass/fail status
+2. **Console Logs** - Detailed test execution information
+3. **GitHub Issues** - Critical failures generate tracking issues
+4. **Lighthouse Reports** - Performance and quality audits (separate job)
 
 ### GitHub Integration
-- **PR Comments** - Automated test result summaries
+- **PR Comments** - Automated test result summaries with detailed metrics
 - **Issue Creation** - Critical failures generate tracking issues
 - **Status Checks** - Pass/fail status for PR merging
-- **Artifact Storage** - 30-day retention of test results
+- **Workflow Logs** - Complete test execution details
 
 ## Running Tests Locally
 
@@ -131,10 +131,11 @@ npm run preview
 Visual testing is **workflow-only** and runs automatically in GitHub Actions. This approach ensures:
 - **Universal Compatibility** - Works with any project structure (CommonJS, ES modules, etc.)
 - **No Local Dependencies** - Doesn't pollute your project with testing packages
-- **Consistent Environment** - Same testing environment across all projects
+- **No File I/O** - Results reported directly to PR comments without creating files
+- **Lightweight Execution** - Minimal resource usage and faster execution
 - **Zero Configuration** - No setup required in individual projects
 
-The visual testing dependencies are installed globally in the GitHub Actions runner and use CommonJS syntax for maximum compatibility.
+The visual testing dependencies are installed locally in the GitHub Actions runner and results are streamed directly to PR comments for immediate feedback.
 
 ## Workflow Configuration
 

@@ -82,12 +82,6 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
 
-      - name: Install dependencies
-        run: |
-          npm install
-          # Install Puppeteer and testing dependencies locally for workflow
-          npm install puppeteer playwright @playwright/test lighthouse axe-core
-
       - name: Get changed files in PR
         id: changed-files
         if: github.event_name == 'pull_request'
@@ -125,6 +119,13 @@ jobs:
             echo "needs_testing=false" >> $GITHUB_OUTPUT
             echo "Testing not needed: No relevant files changed"
           fi
+
+      - name: Install dependencies
+        if: steps.check-testing-needed.outputs.needs_testing == 'true'
+        run: |
+          npm install
+          # Install Puppeteer and testing dependencies locally for workflow
+          npm install puppeteer playwright @playwright/test lighthouse axe-core
 
       - name: Build Astro site
         if: steps.check-testing-needed.outputs.needs_testing == 'true'
@@ -168,10 +169,6 @@ jobs:
         if: steps.check-testing-needed.outputs.needs_testing == 'true'
         id: visual-tests
         run: |
-          # Create test results directory
-          mkdir -p test-results/screenshots
-          mkdir -p test-results/reports
-          
           # Set viewport configuration
           case "${{ matrix.viewport }}" in
             "mobile")
@@ -329,15 +326,9 @@ jobs:
                 }
               }
 
-              // Save results
-              await fs.writeFile(
-                'test-results/reports/visual-test-results.json',
-                JSON.stringify(results, null, 2)
-              );
-
-              // Generate HTML report
-              await generateHtmlReport(results);
-
+              // Generate PR comment content
+              const commentContent = generatePRComment(results);
+              
               console.log('\n=== Visual Test Summary ===');
               console.log(`Browser: ${results.browser}`);
               console.log(`Viewport: ${results.viewport}`);
@@ -345,6 +336,11 @@ jobs:
               console.log(`Passed: ${results.summary.passed}`);
               console.log(`Failed: ${results.summary.failed}`);
               console.log(`Warnings: ${results.summary.warnings}`);
+
+              // Output results for GitHub Actions
+              console.log('VISUAL_TEST_RESULTS=' + JSON.stringify(results));
+              console.log('VISUAL_TEST_COMMENT=' + commentContent);
+              console.log('VISUAL_TEST_FAILED=' + (results.summary.failed > 0 ? 'true' : 'false'));
 
               // Exit with error if any tests failed
               if (results.summary.failed > 0) {
@@ -354,6 +350,52 @@ jobs:
             } finally {
               await browser.close();
             }
+          }
+
+          function generatePRComment(results) {
+            const statusEmoji = {
+              passed: '✅',
+              failed: '❌',
+              warning: '⚠️'
+            };
+            
+            let comment = `## 📸 Visual Test Results - ${results.browser} (${results.viewport.split('x')[0] === '375' ? 'mobile' : results.viewport.split('x')[0] === '768' ? 'tablet' : 'desktop'})\n\n`;
+            comment += `**Summary:** ${results.summary.passed}/${results.summary.total} tests passed\n\n`;
+            
+            if (results.summary.failed > 0) {
+              comment += `### ❌ Failed Tests (${results.summary.failed})\n`;
+              results.tests.filter(t => t.status === 'failed').forEach(test => {
+                comment += `- **${test.title}**: ${test.errors.join(', ')}\n`;
+              });
+              comment += '\n';
+            }
+            
+            if (results.summary.warnings > 0) {
+              comment += `### ⚠️ Warnings (${results.summary.warnings})\n`;
+              results.tests.filter(t => t.status === 'warning').forEach(test => {
+                const warnings = test.checks.filter(c => c.status === 'warning');
+                comment += `- **${test.title}**: ${warnings.map(w => w.name).join(', ')}\n`;
+              });
+              comment += '\n';
+            }
+            
+            comment += `### 📊 Test Details\n`;
+            results.tests.forEach(test => {
+              comment += `- ${statusEmoji[test.status]} **${test.title}** (${test.path})\n`;
+              if (test.checks.length > 0) {
+                const checkSummary = test.checks.reduce((acc, check) => {
+                  acc[check.status] = (acc[check.status] || 0) + 1;
+                  return acc;
+                }, {});
+                comment += `  - Checks: ${Object.entries(checkSummary).map(([status, count]) => `${count} ${status}`).join(', ')}\n`;
+              }
+              if (test.metrics.JSHeapUsedSize) {
+                comment += `  - Performance: ${test.metrics.JSHeapUsedSize}MB heap, ${test.metrics.LayoutCount} layouts\n`;
+              }
+            });
+            
+            comment += `\n---\n*Visual tests completed at ${results.timestamp}*`;
+            return comment;
           }
 
           async function testPage(browser, pageConfig) {
@@ -389,13 +431,8 @@ jobs:
                 testResult.status = 'failed';
               }
 
-              // Take full page screenshot
-              const screenshotPath = `test-results/screenshots/${pageConfig.name}-${VIEWPORT_WIDTH}x${VIEWPORT_HEIGHT}.png`;
-              await page.screenshot({
-                path: screenshotPath,
-                fullPage: true
-              });
-              testResult.screenshots.push(screenshotPath);
+              // Skip screenshot saving to avoid file I/O
+              // Screenshots would be saved here if needed for artifacts
 
               // Performance metrics
               const metrics = await page.metrics();
@@ -553,129 +590,6 @@ jobs:
             return checks;
           }
 
-          async function generateHtmlReport(results) {
-            const html = `
-            <!DOCTYPE html>
-            <html lang="en">
-            <head>
-              <meta charset="UTF-8">
-              <meta name="viewport" content="width=device-width, initial-scale=1.0">
-              <title>Visual Test Report</title>
-              <style>
-                body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
-                .container { max-width: 1200px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-                .header { background: #2563eb; color: white; padding: 20px; border-radius: 8px 8px 0 0; }
-                .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; padding: 20px; }
-                .summary-card { background: #f8fafc; padding: 15px; border-radius: 6px; text-align: center; }
-                .summary-card h3 { margin: 0 0 10px 0; color: #374151; }
-                .summary-card .number { font-size: 2em; font-weight: bold; }
-                .passed { color: #059669; }
-                .failed { color: #dc2626; }
-                .warning { color: #d97706; }
-                .test-results { padding: 0 20px 20px; }
-                .test-item { margin-bottom: 20px; border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden; }
-                .test-header { background: #f9fafb; padding: 15px; border-bottom: 1px solid #e5e7eb; }
-                .test-content { padding: 15px; }
-                .checks { margin-top: 15px; }
-                .check-item { display: flex; align-items: center; padding: 8px; margin: 5px 0; border-radius: 4px; }
-                .check-item.passed { background: #f0fdf4; }
-                .check-item.failed { background: #fef2f2; }
-                .check-item.warning { background: #fffbeb; }
-                .status-badge { padding: 4px 8px; border-radius: 4px; font-size: 0.8em; font-weight: bold; margin-right: 10px; }
-                .screenshot { max-width: 300px; border-radius: 4px; margin: 10px 0; }
-                .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 15px 0; }
-                .metric { background: #f8fafc; padding: 10px; border-radius: 4px; text-align: center; }
-              </style>
-            </head>
-            <body>
-              <div class="container">
-                <div class="header">
-                  <h1>Visual Test Report</h1>
-                  <p>Browser: ${results.browser} | Viewport: ${results.viewport} | ${results.timestamp}</p>
-                </div>
-                
-                <div class="summary">
-                  <div class="summary-card">
-                    <h3>Total Tests</h3>
-                    <div class="number">${results.summary.total}</div>
-                  </div>
-                  <div class="summary-card">
-                    <h3>Passed</h3>
-                    <div class="number passed">${results.summary.passed}</div>
-                  </div>
-                  <div class="summary-card">
-                    <h3>Failed</h3>
-                    <div class="number failed">${results.summary.failed}</div>
-                  </div>
-                  <div class="summary-card">
-                    <h3>Warnings</h3>
-                    <div class="number warning">${results.summary.warnings}</div>
-                  </div>
-                </div>
-                
-                <div class="test-results">
-                  <h2>Test Results</h2>
-                  ${results.tests.map(test => `
-                    <div class="test-item">
-                      <div class="test-header">
-                        <h3>${test.title} <span class="status-badge ${test.status}">${test.status.toUpperCase()}</span></h3>
-                        <p><strong>URL:</strong> ${test.url}</p>
-                      </div>
-                      <div class="test-content">
-                        ${test.errors.length > 0 ? `
-                          <div style="background: #fef2f2; padding: 10px; border-radius: 4px; margin-bottom: 15px;">
-                            <strong>Errors:</strong>
-                            <ul>${test.errors.map(error => `<li>${error}</li>`).join('')}</ul>
-                          </div>
-                        ` : ''}
-                        
-                        <div class="metrics">
-                          <div class="metric">
-                            <strong>JS Heap Used</strong><br>
-                            ${test.metrics.JSHeapUsedSize || 0} MB
-                          </div>
-                          <div class="metric">
-                            <strong>Layout Count</strong><br>
-                            ${test.metrics.LayoutCount || 0}
-                          </div>
-                          <div class="metric">
-                            <strong>Style Recalc</strong><br>
-                            ${test.metrics.RecalcStyleCount || 0}
-                          </div>
-                        </div>
-                        
-                        <div class="checks">
-                          <h4>Visual Checks</h4>
-                          ${test.checks.map(check => `
-                            <div class="check-item ${check.status}">
-                              <span class="status-badge ${check.status}">${check.status.toUpperCase()}</span>
-                              <div>
-                                <strong>${check.name}:</strong> ${check.message}
-                                ${check.expected && check.actual ? `<br><small>Expected: ${check.expected} | Actual: ${check.actual}</small>` : ''}
-                              </div>
-                            </div>
-                          `).join('')}
-                        </div>
-                        
-                        ${test.screenshots.length > 0 ? `
-                          <div>
-                            <h4>Screenshots</h4>
-                            ${test.screenshots.map(screenshot => `
-                              <img src="../${screenshot}" alt="Screenshot of ${test.title}" class="screenshot">
-                            `).join('')}
-                          </div>
-                        ` : ''}
-                      </div>
-                    </div>
-                  `).join('')}
-                </div>
-              </div>
-            </body>
-            </html>
-            `;
-
-            await fs.writeFile('test-results/reports/visual-test-report.html', html);
-          }
 
           // Run the tests
           runVisualTests().catch(error => {
@@ -687,69 +601,25 @@ jobs:
           # Run the visual tests
           BROWSER_TYPE=${{ matrix.browser }} node visual-tests-workflow.cjs
 
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: visual-test-results-${{ matrix.browser }}-${{ matrix.viewport }}
-          path: |
-            test-results/
-          retention-days: 30
-
       - name: Comment on PR with visual test results
         if: github.event_name == 'pull_request' && always()
         run: |
-          if [ -f "test-results/reports/visual-test-results.json" ]; then
-            # Generate PR comment from test results
-            cat > generate_comment.cjs << 'EOF'
-            const fs = require('fs');
-            const results = JSON.parse(fs.readFileSync('test-results/reports/visual-test-results.json', 'utf8'));
+          # Extract comment content from test output
+          COMMENT_CONTENT=$(echo "${{ steps.visual-tests.outputs.stdout }}" | grep "VISUAL_TEST_COMMENT=" | cut -d'=' -f2-)
+          
+          if [ ! -z "$COMMENT_CONTENT" ]; then
+            gh pr comment ${{ github.event.pull_request.number }} --body "$COMMENT_CONTENT"
+          else
+            # Fallback comment if extraction fails
+            gh pr comment ${{ github.event.pull_request.number }} --body "## 📸 Visual Testing Completed
             
-            const statusEmoji = {
-              passed: '✅',
-              failed: '❌',
-              warning: '⚠️'
-            };
+            Visual tests have been executed for this PR. Check the workflow logs for detailed results.
             
-            let comment = `## 📸 Visual Test Results - ${{ matrix.browser }} (${{ matrix.viewport }})\n\n`;
-            comment += `**Summary:** ${results.summary.passed}/${results.summary.total} tests passed\n\n`;
+            **Browser:** ${{ matrix.browser }}
+            **Viewport:** ${{ matrix.viewport }}
             
-            if (results.summary.failed > 0) {
-              comment += `### ❌ Failed Tests (${results.summary.failed})\n`;
-              results.tests.filter(t => t.status === 'failed').forEach(test => {
-                comment += `- **${test.title}**: ${test.errors.join(', ')}\n`;
-              });
-              comment += '\n';
-            }
-            
-            if (results.summary.warnings > 0) {
-              comment += `### ⚠️ Warnings (${results.summary.warnings})\n`;
-              results.tests.filter(t => t.status === 'warning').forEach(test => {
-                const warnings = test.checks.filter(c => c.status === 'warning');
-                comment += `- **${test.title}**: ${warnings.map(w => w.name).join(', ')}\n`;
-              });
-              comment += '\n';
-            }
-            
-            comment += `### 📊 Test Details\n`;
-            results.tests.forEach(test => {
-              comment += `- ${statusEmoji[test.status]} **${test.title}** (${test.path})\n`;
-              if (test.checks.length > 0) {
-                const checkSummary = test.checks.reduce((acc, check) => {
-                  acc[check.status] = (acc[check.status] || 0) + 1;
-                  return acc;
-                }, {});
-                comment += `  - Checks: ${Object.entries(checkSummary).map(([status, count]) => `${count} ${status}`).join(', ')}\n`;
-              }
-            });
-            
-            comment += `\n---\n*Visual tests completed at ${results.timestamp}*`;
-            
-            console.log(comment);
-            EOF
-            
-            COMMENT=$(node generate_comment.cjs)
-            gh pr comment ${{ github.event.pull_request.number }} --body "$COMMENT"
+            ---
+            *Visual testing automation*"
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -757,51 +627,34 @@ jobs:
       - name: Create issues for critical visual failures
         if: failure() && github.event_name == 'pull_request'
         run: |
-          if [ -f "test-results/reports/visual-test-results.json" ]; then
-            cat > create_visual_issues.cjs << 'EOF'
-            const fs = require('fs');
-            const { execSync } = require('child_process');
+          # Check if there were failures from test output
+          HAS_FAILURES=$(echo "${{ steps.visual-tests.outputs.stdout }}" | grep "VISUAL_TEST_FAILED=true" || echo "")
+          
+          if [ ! -z "$HAS_FAILURES" ]; then
+            gh issue create \
+              --title "🔍 Visual Test Failures in PR #${{ github.event.pull_request.number }}" \
+              --body "## Visual Test Failure Report
             
-            const results = JSON.parse(fs.readFileSync('test-results/reports/visual-test-results.json', 'utf8'));
-            const failedTests = results.tests.filter(test => test.status === 'failed');
-            
-            failedTests.forEach(test => {
-              const title = `🔍 Visual Test Failure: ${test.title} (${results.browser}/${results.viewport})`;
-              const body = `## Visual Test Failure Report
-            
-            **Page:** ${test.title}
-            **URL:** ${test.url}
-            **Browser:** ${results.browser}
-            **Viewport:** ${results.viewport}
             **PR:** #${{ github.event.pull_request.number }}
+            **Browser:** ${{ matrix.browser }}
+            **Viewport:** ${{ matrix.viewport }}
+            **Workflow:** [View Details](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
             
-            ### Errors
-            ${test.errors.map(error => `- ${error}`).join('\n')}
+            ### Summary
+            Visual tests failed for this PR. Please check the workflow logs for detailed information about:
+            - Failed page loads
+            - Visual check failures
+            - Performance issues
+            - Console errors
             
-            ### Failed Checks
-            ${test.checks.filter(c => c.status === 'failed').map(check => 
-              `- **${check.name}**: ${check.message}`
-            ).join('\n')}
-            
-            ### Performance Metrics
-            - JS Heap Used: ${test.metrics.JSHeapUsedSize || 0} MB
-            - Layout Count: ${test.metrics.LayoutCount || 0}
-            - Style Recalculations: ${test.metrics.RecalcStyleCount || 0}
+            ### Next Steps
+            1. Review the workflow logs for specific failure details
+            2. Fix the identified issues
+            3. Push new commits to re-trigger testing
             
             ---
-            *This issue was automatically created from visual test failures.*`;
-            
-              try {
-                execSync(`gh issue create --title "${title}" --body "${body}" --label "visual-testing,automated-review,severity:high"`, {
-                  stdio: 'inherit'
-                });
-              } catch (error) {
-                console.error(`Failed to create issue for ${test.title}:`, error.message);
-              }
-            });
-            EOF
-            
-            node create_visual_issues.cjs
+            *This issue was automatically created from visual test failures.*" \
+              --label "visual-testing,automated-review,severity:high"
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
