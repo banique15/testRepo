@@ -1,0 +1,179 @@
+---
+interface Props {
+  message?: string;
+  type?: 'info' | 'warning' | 'success';
+}
+
+const { 
+  message = "🎉 Welcome to our updated site! Check out our new features and improvements.", 
+  type = 'info' 
+} = Astro.props;
+---
+
+<div class="announcement" data-type={type}>
+  <div class="announcement-container">
+    <div class="announcement-content">
+      <div class="announcement-icon">
+        {type === 'info' && '📢'}
+        {type === 'warning' && '⚠️'}
+        {type === 'success' && '✅'}
+      </div>
+      <p class="announcement-message">{message}</p>
+    </div>
+    <button class="announcement-close" aria-label="Close announcement">×</button>
+  </div>
+</div>
+
+<style>
+  .announcement {
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(10px);
+    border-radius: 12px;
+    margin-bottom: 2rem;
+    padding: 1rem;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+    animation: slideIn 0.3s ease-out;
+  }
+
+  .announcement[data-type="warning"] {
+    background: rgba(255, 193, 7, 0.15);
+    border-color: rgba(255, 193, 7, 0.3);
+  }
+
+  .announcement[data-type="success"] {
+    background: rgba(40, 167, 69, 0.15);
+    border-color: rgba(40, 167, 69, 0.3);
+  }
+
+  .announcement-container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .announcement-content {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex: 1;
+  }
+
+  .announcement-icon {
+    font-size: 1.5rem;
+    flex-shrink: 0;
+  }
+
+  .announcement-message {
+    color: white;
+    margin: 0;
+    font-size: 1rem;
+    line-height: 1.5;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
+  }
+
+  .announcement-close {
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    color: white;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    font-size: 1.2rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+  }
+
+  .announcement-close:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform: scale(1.1);
+  }
+
+  .announcement-close:focus {
+    outline: 2px solid rgba(255, 255, 255, 0.5);
+    outline-offset: 2px;
+  }
+
+  @keyframes slideIn {
+    from {
+      opacity: 0;
+      transform: translateY(-20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @media (max-width: 768px) {
+    .announcement {
+      padding: 0.75rem;
+    }
+
+    .announcement-container {
+      gap: 0.75rem;
+    }
+
+    .announcement-content {
+      gap: 0.75rem;
+    }
+
+    .announcement-message {
+      font-size: 0.9rem;
+    }
+
+    .announcement-icon {
+      font-size: 1.25rem;
+    }
+
+    .announcement-close {
+      width: 28px;
+      height: 28px;
+      font-size: 1rem;
+    }
+  }
+</style>
+
+<script>
+  // Add click handler for close button
+  document.addEventListener('DOMContentLoaded', () => {
+    const closeButtons = document.querySelectorAll('.announcement-close');
+    
+    closeButtons.forEach(button => {
+      button.addEventListener('click', (e) => {
+        const announcement = e.target.closest('.announcement');
+        if (announcement) {
+          announcement.style.animation = 'slideOut 0.3s ease-in forwards';
+          setTimeout(() => {
+            announcement.remove();
+          }, 300);
+        }
+      });
+    });
+  });
+
+  // Add slideOut animation
+  const style = document.createElement('style');
+  style.textContent = `
+    @keyframes slideOut {
+      from {
+        opacity: 1;
+        transform: translateY(0);
+        max-height: 200px;
+      }
+      to {
+        opacity: 0;
+        transform: translateY(-20px);
+        max-height: 0;
+        margin: 0;
+        padding: 0;
+      }
+    }
+  `;
+  document.head.appendChild(style);
+</script>

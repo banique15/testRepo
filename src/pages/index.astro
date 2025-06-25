@@ -2,6 +2,7 @@
 import Header from '../components/Header.astro';
 import Navigation from '../components/Navigation.astro';
 import ImageCarousel from '../components/ImageCarousel.astro';
+import Announcement from '../components/Announcement.astro';
 
 const pageTitle = "Welcome to My Astro Site";
 const currentYear = new Date().getFullYear();
@@ -132,6 +133,8 @@ const currentYear = new Date().getFullYear();
 		<div class="container">
 			<Navigation currentPath="/" />
 			<Header title={pageTitle} />
+			
+			<Announcement message="🎉 Welcome to our updated site! Check out our new features and improvements." type="info" />
 			
 			<ImageCarousel />
 
