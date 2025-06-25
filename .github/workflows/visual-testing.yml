@@ -44,7 +44,7 @@ jobs:
       - name: Run visual tests
         id: visual-tests
         run: |
-          cat > simple-visual-test.js << 'EOF'
+          cat > simple-visual-test.cjs << 'EOF'
           const puppeteer = require('puppeteer');
           
           const pages = [
@@ -141,7 +141,7 @@ jobs:
           });
           EOF
           
-          node simple-visual-test.js
+          node simple-visual-test.cjs
 
       - name: Comment on PR
         if: github.event_name == 'pull_request' && always()
