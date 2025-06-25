@@ -90,7 +90,10 @@ jobs:
           CHANGED_FILES=$(gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files \
             --jq '.[].filename' | grep -E '\.(astro|md|mdx)$' | grep '^src/pages/' || echo "")
           
-          echo "changed_files=$CHANGED_FILES" >> $GITHUB_OUTPUT
+          # Convert multiline to single line with pipe separator for GitHub Actions output
+          CHANGED_FILES_SINGLE=$(echo "$CHANGED_FILES" | tr '\n' '|' | sed 's/|$//')
+          
+          echo "changed_files=$CHANGED_FILES_SINGLE" >> $GITHUB_OUTPUT
           echo "Changed page files in PR:"
           echo "$CHANGED_FILES"
         env:
@@ -192,8 +195,11 @@ jobs:
           echo "VIEWPORT_WIDTH=$VIEWPORT_WIDTH" >> $GITHUB_ENV
           echo "VIEWPORT_HEIGHT=$VIEWPORT_HEIGHT" >> $GITHUB_ENV
           
-          # Pass changed files to the test script
-          echo "CHANGED_FILES=${{ steps.changed-files.outputs.changed_files }}" >> $GITHUB_ENV
+          # Pass changed files to the test script (convert pipe-separated back to newline-separated)
+          CHANGED_FILES_FORMATTED=$(echo "${{ steps.changed-files.outputs.changed_files }}" | tr '|' '\n')
+          echo "CHANGED_FILES<<EOF" >> $GITHUB_ENV
+          echo "$CHANGED_FILES_FORMATTED" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
           
           # Create standalone visual tests script (CommonJS for compatibility)
           cat > visual-tests-workflow.cjs << 'EOF'
