@@ -1,0 +1,620 @@
+---
+import Header from '../components/Header.astro';
+import Navigation from '../components/Navigation.astro';
+
+const pageTitle = "Activities Calendar";
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="generator" content={Astro.generator} />
+    <title>{pageTitle}</title>
+    
+    <!-- FullCalendar CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/@fullcalendar/core@6.1.9/main.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/@fullcalendar/daygrid@6.1.9/main.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/@fullcalendar/timegrid@6.1.9/main.min.css" rel="stylesheet">
+    
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        line-height: 1.6;
+        color: #333;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+      }
+
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 2rem;
+      }
+
+      .calendar-container {
+        background: white;
+        border-radius: 12px;
+        padding: 2rem;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        margin-bottom: 2rem;
+      }
+
+      .calendar-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+        flex-wrap: wrap;
+        gap: 1rem;
+      }
+
+      .calendar-title {
+        color: #667eea;
+        font-size: 1.5rem;
+        margin: 0;
+      }
+
+      .calendar-controls {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+      }
+
+      .btn {
+        background: linear-gradient(45deg, #667eea, #764ba2);
+        color: white;
+        border: none;
+        padding: 0.75rem 1rem;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.9rem;
+        font-weight: 500;
+        transition: transform 0.2s ease;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      .btn:hover {
+        transform: scale(1.05);
+      }
+
+      .btn-secondary {
+        background: #f8f9fa;
+        color: #6c757d;
+        border: 1px solid #dee2e6;
+      }
+
+      .btn-secondary:hover {
+        background: #e9ecef;
+        color: #495057;
+      }
+
+      .btn-danger {
+        background: linear-gradient(45deg, #dc3545, #c82333);
+      }
+
+      #calendar {
+        margin-top: 1rem;
+      }
+
+      /* Modal Styles */
+      .modal {
+        display: none;
+        position: fixed;
+        z-index: 1000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0,0,0,0.5);
+        backdrop-filter: blur(5px);
+      }
+
+      .modal-content {
+        background-color: white;
+        margin: 5% auto;
+        padding: 2rem;
+        border-radius: 12px;
+        width: 90%;
+        max-width: 500px;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      }
+
+      .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+      }
+
+      .modal-title {
+        color: #667eea;
+        margin: 0;
+      }
+
+      .close {
+        font-size: 1.5rem;
+        cursor: pointer;
+        color: #aaa;
+        transition: color 0.3s;
+      }
+
+      .close:hover {
+        color: #333;
+      }
+
+      .form-group {
+        margin-bottom: 1rem;
+      }
+
+      .form-group label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-weight: 500;
+        color: #333;
+      }
+
+      .form-group input,
+      .form-group textarea,
+      .form-group select {
+        width: 100%;
+        padding: 0.75rem;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        font-size: 1rem;
+        transition: border-color 0.3s;
+      }
+
+      .form-group input:focus,
+      .form-group textarea:focus,
+      .form-group select:focus {
+        outline: none;
+        border-color: #667eea;
+        box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+      }
+
+      .form-group textarea {
+        resize: vertical;
+        min-height: 80px;
+      }
+
+      .form-actions {
+        display: flex;
+        gap: 1rem;
+        justify-content: flex-end;
+        margin-top: 1.5rem;
+        flex-wrap: wrap;
+      }
+
+      /* Activity Type Colors */
+      .fc-event {
+        border: none !important;
+        font-weight: 500;
+      }
+
+      .fc-event.activity-work {
+        background-color: #667eea !important;
+      }
+
+      .fc-event.activity-personal {
+        background-color: #28a745 !important;
+      }
+
+      .fc-event.activity-health {
+        background-color: #dc3545 !important;
+      }
+
+      .fc-event.activity-social {
+        background-color: #ffc107 !important;
+        color: #333 !important;
+      }
+
+      .fc-event.activity-default {
+        background-color: #6c757d !important;
+      }
+
+      /* Legend */
+      .activity-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        margin-bottom: 1rem;
+        padding: 1rem;
+        background: #f8f9fa;
+        border-radius: 6px;
+      }
+
+      .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.9rem;
+      }
+
+      .legend-color {
+        width: 16px;
+        height: 16px;
+        border-radius: 3px;
+      }
+
+      /* Responsive Design */
+      @media (max-width: 768px) {
+        .container {
+          padding: 1rem;
+        }
+        
+        .calendar-container {
+          padding: 1rem;
+        }
+
+        .calendar-header {
+          flex-direction: column;
+          align-items: stretch;
+        }
+
+        .calendar-controls {
+          justify-content: center;
+        }
+
+        .modal-content {
+          margin: 10% auto;
+          width: 95%;
+          padding: 1.5rem;
+        }
+
+        .form-actions {
+          flex-direction: column;
+        }
+
+        .btn {
+          justify-content: center;
+        }
+      }
+
+      @media (max-width: 576px) {
+        .fc-toolbar {
+          flex-direction: column !important;
+          gap: 0.5rem;
+        }
+
+        .fc-toolbar-chunk {
+          display: flex;
+          justify-content: center;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <Navigation currentPath="/activities" />
+      <Header title={pageTitle} />
+      
+      <div class="calendar-container">
+        <div class="calendar-header">
+          <h2 class="calendar-title">📅 My Activities</h2>
+          <div class="calendar-controls">
+            <button class="btn" onclick="openAddModal()">
+              ➕ Add Activity
+            </button>
+          </div>
+        </div>
+
+        <div class="activity-legend">
+          <div class="legend-item">
+            <div class="legend-color" style="background-color: #667eea;"></div>
+            <span>Work</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-color" style="background-color: #28a745;"></div>
+            <span>Personal</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-color" style="background-color: #dc3545;"></div>
+            <span>Health</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-color" style="background-color: #ffc107;"></div>
+            <span>Social</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-color" style="background-color: #6c757d;"></div>
+            <span>Other</span>
+          </div>
+        </div>
+
+        <div id="calendar"></div>
+      </div>
+    </div>
+
+    <!-- Add/Edit Activity Modal -->
+    <div id="activityModal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 class="modal-title" id="modalTitle">Add Activity</h3>
+          <span class="close" onclick="closeModal()">&times;</span>
+        </div>
+        <form id="activityForm">
+          <input type="hidden" id="activityId" name="id">
+          <div class="form-group">
+            <label for="activityTitle">Title *</label>
+            <input type="text" id="activityTitle" name="title" required>
+          </div>
+          <div class="form-group">
+            <label for="activityStart">Start Date & Time *</label>
+            <input type="datetime-local" id="activityStart" name="start" required>
+          </div>
+          <div class="form-group">
+            <label for="activityEnd">End Date & Time</label>
+            <input type="datetime-local" id="activityEnd" name="end">
+          </div>
+          <div class="form-group">
+            <label for="activityType">Category</label>
+            <select id="activityType" name="type">
+              <option value="default">Other</option>
+              <option value="work">Work</option>
+              <option value="personal">Personal</option>
+              <option value="health">Health</option>
+              <option value="social">Social</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="activityDescription">Description</label>
+            <textarea id="activityDescription" name="description" placeholder="Optional description..."></textarea>
+          </div>
+          <div class="form-actions">
+            <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            <button type="button" class="btn btn-danger" id="deleteBtn" onclick="deleteActivity()" style="display: none;">Delete</button>
+            <button type="submit" class="btn" id="saveBtn">Save Activity</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- FullCalendar JavaScript -->
+    <script src="https://cdn.jsdelivr.net/npm/@fullcalendar/core@6.1.9/main.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@fullcalendar/daygrid@6.1.9/main.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@fullcalendar/timegrid@6.1.9/main.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@fullcalendar/interaction@6.1.9/main.min.js"></script>
+
+    <script>
+      let calendar;
+      let currentUserId = 'default'; // Simple user system for demo
+      let isEditing = false;
+      let currentEvent = null;
+
+      document.addEventListener('DOMContentLoaded', function() {
+        const calendarEl = document.getElementById('calendar');
+        
+        calendar = new FullCalendar.Calendar(calendarEl, {
+          initialView: 'dayGridMonth',
+          headerToolbar: {
+            left: 'prev,next today',
+            center: 'title',
+            right: 'dayGridMonth,timeGridWeek,timeGridDay'
+          },
+          editable: true,
+          selectable: true,
+          selectMirror: true,
+          dayMaxEvents: true,
+          weekends: true,
+          select: function(arg) {
+            openAddModal(arg.start, arg.end);
+          },
+          eventClick: function(arg) {
+            openEditModal(arg.event);
+          },
+          eventDrop: function(arg) {
+            updateEventDates(arg.event);
+          },
+          eventResize: function(arg) {
+            updateEventDates(arg.event);
+          },
+          events: function(fetchInfo, successCallback, failureCallback) {
+            loadActivities(successCallback, failureCallback);
+          }
+        });
+        
+        calendar.render();
+        
+        // Form submission
+        document.getElementById('activityForm').addEventListener('submit', function(e) {
+          e.preventDefault();
+          saveActivity();
+        });
+      });
+
+      async function loadActivities(successCallback, failureCallback) {
+        try {
+          const response = await fetch(`/api/activities.json?userId=${currentUserId}`);
+          if (response.ok) {
+            const activities = await response.json();
+            const events = activities.map(activity => ({
+              id: activity.id,
+              title: activity.title,
+              start: activity.start,
+              end: activity.end,
+              className: `activity-${activity.type}`,
+              extendedProps: {
+                description: activity.description,
+                type: activity.type,
+                userId: activity.userId
+              }
+            }));
+            successCallback(events);
+          } else {
+            failureCallback('Failed to load activities');
+          }
+        } catch (error) {
+          console.error('Error loading activities:', error);
+          failureCallback(error);
+        }
+      }
+
+      function openAddModal(start, end) {
+        isEditing = false;
+        currentEvent = null;
+        document.getElementById('modalTitle').textContent = 'Add Activity';
+        document.getElementById('deleteBtn').style.display = 'none';
+        document.getElementById('saveBtn').textContent = 'Save Activity';
+        
+        // Clear form
+        document.getElementById('activityForm').reset();
+        
+        // Set default dates
+        if (start) {
+          document.getElementById('activityStart').value = formatDateForInput(start);
+        }
+        if (end && end !== start) {
+          document.getElementById('activityEnd').value = formatDateForInput(end);
+        }
+        
+        document.getElementById('activityModal').style.display = 'block';
+      }
+
+      function openEditModal(event) {
+        isEditing = true;
+        currentEvent = event;
+        document.getElementById('modalTitle').textContent = 'Edit Activity';
+        document.getElementById('deleteBtn').style.display = 'inline-block';
+        document.getElementById('saveBtn').textContent = 'Update Activity';
+        
+        // Populate form
+        document.getElementById('activityId').value = event.id;
+        document.getElementById('activityTitle').value = event.title;
+        document.getElementById('activityStart').value = formatDateForInput(event.start);
+        document.getElementById('activityEnd').value = event.end ? formatDateForInput(event.end) : '';
+        document.getElementById('activityType').value = event.extendedProps.type || 'default';
+        document.getElementById('activityDescription').value = event.extendedProps.description || '';
+        
+        document.getElementById('activityModal').style.display = 'block';
+      }
+
+      function closeModal() {
+        document.getElementById('activityModal').style.display = 'none';
+        calendar.unselect();
+      }
+
+      async function saveActivity() {
+        const formData = new FormData(document.getElementById('activityForm'));
+        const activityData = {
+          title: formData.get('title'),
+          start: formData.get('start'),
+          end: formData.get('end') || formData.get('start'),
+          type: formData.get('type'),
+          description: formData.get('description'),
+          userId: currentUserId
+        };
+
+        try {
+          let response;
+          if (isEditing) {
+            activityData.id = formData.get('id');
+            response = await fetch('/api/activities.json', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(activityData)
+            });
+          } else {
+            response = await fetch('/api/activities.json', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(activityData)
+            });
+          }
+
+          if (response.ok) {
+            closeModal();
+            calendar.refetchEvents();
+          } else {
+            const error = await response.json();
+            alert('Error saving activity: ' + (error.error || 'Unknown error'));
+          }
+        } catch (error) {
+          console.error('Error saving activity:', error);
+          alert('Error saving activity: ' + error.message);
+        }
+      }
+
+      async function updateEventDates(event) {
+        const activityData = {
+          id: event.id,
+          title: event.title,
+          start: event.start.toISOString(),
+          end: event.end ? event.end.toISOString() : event.start.toISOString(),
+          type: event.extendedProps.type,
+          description: event.extendedProps.description,
+          userId: currentUserId
+        };
+
+        try {
+          const response = await fetch('/api/activities.json', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(activityData)
+          });
+
+          if (!response.ok) {
+            const error = await response.json();
+            alert('Error updating activity: ' + (error.error || 'Unknown error'));
+            calendar.refetchEvents(); // Revert on error
+          }
+        } catch (error) {
+          console.error('Error updating activity:', error);
+          alert('Error updating activity: ' + error.message);
+          calendar.refetchEvents(); // Revert on error
+        }
+      }
+
+      async function deleteActivity() {
+        if (!currentEvent || !confirm('Are you sure you want to delete this activity?')) {
+          return;
+        }
+
+        try {
+          const response = await fetch(`/api/activities.json?id=${currentEvent.id}&userId=${currentUserId}`, {
+            method: 'DELETE'
+          });
+
+          if (response.ok) {
+            closeModal();
+            calendar.refetchEvents();
+          } else {
+            const error = await response.json();
+            alert('Error deleting activity: ' + (error.error || 'Unknown error'));
+          }
+        } catch (error) {
+          console.error('Error deleting activity:', error);
+          alert('Error deleting activity: ' + error.message);
+        }
+      }
+
+      function formatDateForInput(date) {
+        const d = new Date(date);
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        const hours = String(d.getHours()).padStart(2, '0');
+        const minutes = String(d.getMinutes()).padStart(2, '0');
+        return `${year}-${month}-${day}T${hours}:${minutes}`;
+      }
+
+      // Close modal when clicking outside
+      window.onclick = function(event) {
+        const modal = document.getElementById('activityModal');
+        if (event.target === modal) {
+          closeModal();
+        }
+      }
+    </script>
+  </body>
+</html>

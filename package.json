@@ -9,6 +9,11 @@
     "astro": "astro"
   },
   "dependencies": {
-    "astro": "^5.9.4"
+    "astro": "^5.9.4",
+    "@fullcalendar/core": "^6.1.9",
+    "@fullcalendar/web-component": "^6.1.9",
+    "@fullcalendar/daygrid": "^6.1.9",
+    "@fullcalendar/timegrid": "^6.1.9",
+    "@fullcalendar/interaction": "^6.1.9"
   }
 }
