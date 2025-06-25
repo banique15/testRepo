@@ -1,9 +1,9 @@
 ---
 import Header from '../components/Header.astro';
 import Navigation from '../components/Navigation.astro';
+import Footer from '../components/Footer.astro';
 
 const pageTitle = "Photo Gallery";
-const currentYear = new Date().getFullYear();
 
 // Generate random photo IDs for the gallery
 function generateRandomPhotoIds(count: number): number[] {
@@ -160,12 +160,6 @@ const galleryPhotoIds = generateRandomPhotoIds(12);
 				transform: scale(1.05);
 			}
 
-			footer {
-				text-align: center;
-				color: white;
-				opacity: 0.8;
-				margin-top: 3rem;
-			}
 
 			@media (max-width: 768px) {
 				.container {
@@ -233,9 +227,7 @@ const galleryPhotoIds = generateRandomPhotoIds(12);
 				</button>
 			</section>
 
-			<footer>
-				<p>&copy; {currentYear} My Astro Site. Built with ❤️ and Astro.</p>
-			</footer>
+			<Footer />
 		</div>
 
 		<script>

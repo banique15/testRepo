@@ -1,9 +1,9 @@
 ---
 import Header from '../components/Header.astro';
 import Navigation from '../components/Navigation.astro';
+import Footer from '../components/Footer.astro';
 
 const pageTitle = "About Us";
-const currentYear = new Date().getFullYear();
 ---
 
 <html lang="en">
@@ -54,12 +54,6 @@ const currentYear = new Date().getFullYear();
 				font-size: 1.1rem;
 			}
 
-			footer {
-				text-align: center;
-				color: white;
-				opacity: 0.8;
-				margin-top: 3rem;
-			}
 
 			@media (max-width: 768px) {
 				.container {
@@ -84,9 +78,7 @@ const currentYear = new Date().getFullYear();
 				<p>The navigation component automatically highlights the current page, and the header component accepts different titles and subtitles for each page.</p>
 			</div>
 
-			<footer>
-				<p>&copy; {currentYear} My Astro Site. Built with ❤️ and Astro.</p>
-			</footer>
+			<Footer />
 		</div>
 	</body>
 </html>

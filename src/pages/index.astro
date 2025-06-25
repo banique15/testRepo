@@ -2,9 +2,9 @@
 import Header from '../components/Header.astro';
 import Navigation from '../components/Navigation.astro';
 import ImageCarousel from '../components/ImageCarousel.astro';
+import Footer from '../components/Footer.astro';
 
 const pageTitle = "Welcome to My Astro Site";
-const currentYear = new Date().getFullYear();
 ---
 
 <html lang="en">
@@ -110,12 +110,6 @@ const currentYear = new Date().getFullYear();
 				text-align: center;
 			}
 
-			footer {
-				text-align: center;
-				color: white;
-				opacity: 0.8;
-				margin-top: 3rem;
-			}
 
 			@media (max-width: 768px) {
 				.container {
@@ -177,9 +171,7 @@ const currentYear = new Date().getFullYear();
 				</div>
 			</div>
 
-			<footer>
-				<p>&copy; {currentYear} My Astro Site. Built with ❤️ and Astro.</p>
-			</footer>
+			<Footer />
 		</div>
 	</body>
 </html>

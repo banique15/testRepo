@@ -1,9 +1,9 @@
 ---
 import Header from '../components/Header.astro';
 import Navigation from '../components/Navigation.astro';
+import Footer from '../components/Footer.astro';
 
 const pageTitle = "Frequently Asked Questions";
-const currentYear = new Date().getFullYear();
 
 const faqs = [
   {
@@ -165,12 +165,6 @@ const faqs = [
 				color: #999;
 			}
 
-			footer {
-				text-align: center;
-				color: white;
-				opacity: 0.8;
-				margin-top: 3rem;
-			}
 
 			@media (max-width: 768px) {
 				.container {
@@ -230,9 +224,7 @@ const faqs = [
 				</div>
 			</div>
 
-			<footer>
-				<p>&copy; {currentYear} My Astro Site. Built with ❤️ and Astro.</p>
-			</footer>
+			<Footer />
 		</div>
 
 		<script>
