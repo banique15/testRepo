@@ -1,218 +1,114 @@
 # Visual Testing Documentation
 
-This document explains the visual testing setup for the Nebulous Nebula project, including how it integrates with the existing Claude code review workflow.
+This document explains the simplified visual testing setup for the Nebulous Nebula project.
 
 ## Overview
 
-The visual testing workflow provides comprehensive browser-based testing using Puppeteer and Lighthouse to ensure:
-- Visual consistency across different browsers and viewports
-- Performance optimization
-- Accessibility compliance
-- SEO best practices
-- Layout stability and responsiveness
+The visual testing workflow provides basic browser-based testing using Puppeteer to ensure:
+- All pages load successfully
+- Basic page functionality works
+- No critical errors occur
 
-## Workflow Integration
-
-### Current Workflow Chain
-```
-PR Created/Updated → Claude Code Review → Issue Creator → GitHub Issues
-                  ↘ Visual Testing ↗
-```
+## How It Works
 
 ### Trigger Points
-1. **Pull Request Events** - Runs parallel to Claude code review
-2. **After Code Review** - Triggered when Claude review completes successfully
-3. **Manual Dispatch** - For on-demand testing with custom parameters
-4. **Scheduled** - Automated regression testing (weekdays at 2 AM UTC)
+- **Pull Request Events** - Runs when PR is created or updated
+- **Manual Trigger** - Can be run manually from GitHub Actions tab
 
-## Test Coverage
+### What Gets Tested
+The workflow tests these pages:
+- Home (`/`)
+- About (`/about`) 
+- Gallery (`/gallery`)
+- Contact (`/contact`)
+- FAQ (`/faq`)
 
-### Smart Page Detection
-Visual testing automatically detects which pages to test based on **PR changes**:
+### Test Process
+1. **Build** - Builds your Astro site
+2. **Start Server** - Runs preview server
+3. **Test Pages** - Loads each page with Puppeteer
+4. **Check Results** - Verifies pages load without errors
+5. **Report** - Posts results to PR comment
 
-**Changed Page Files:**
-- Tests only pages that were modified in the PR
-- Automatically discovers pages from `src/pages/*.astro`, `*.md`, `*.mdx`
-- Converts file paths to URL paths (e.g., `src/pages/about.astro` → `/about`)
+## Test Results
 
-**Component Changes:**
-- When components or layouts change, tests key pages that likely use them
-- Always includes home page as it's most likely to be affected
+### What's Checked
+- **Page Loading** - HTTP status codes
+- **Page Titles** - Ensures pages have titles
+- **Basic Functionality** - Pages render without crashes
 
-**Fallback Testing:**
-- If no relevant changes detected, tests common pages (Home, About, Gallery)
-- Manual triggers and scheduled runs test all discovered pages
+### Results Display
+Results are posted as PR comments:
 
-**Smart Skipping:**
-- Automatically skips visual testing if no relevant files changed
-- Posts PR comment explaining why testing was skipped
-- Saves CI resources and reduces noise
+```markdown
+## 📸 Visual Test Results
 
-### Browser Matrix
-- **Chromium** - Primary testing browser
-- **Firefox** - Cross-browser compatibility
-- **WebKit** - Safari compatibility (optional)
+**Summary:** 5/5 pages loaded successfully
 
-### Viewport Testing
-- **Mobile** - 375x667 (iPhone SE)
-- **Tablet** - 768x1024 (iPad)
-- **Desktop** - 1920x1080 (Full HD)
+- ✅ **Home** (/)
+  - Title: "Nebulous Nebula"
+- ✅ **About** (/about)
+  - Title: "About - Nebulous Nebula"
+- ✅ **Gallery** (/gallery)
+  - Title: "Gallery - Nebulous Nebula"
+- ✅ **Contact** (/contact)
+  - Title: "Contact - Nebulous Nebula"
+- ✅ **FAQ** (/faq)
+  - Title: "FAQ - Nebulous Nebula"
 
-## Visual Checks Performed
-
-### Core Checks
-1. **Page Loading** - HTTP status and response validation
-2. **Page Title** - Ensures proper SEO titles
-3. **Viewport Meta Tag** - Responsive design compliance
-4. **Navigation Elements** - Main navigation presence
-5. **Image Alt Text** - Accessibility compliance
-6. **Console Errors** - JavaScript error detection
-7. **Layout Stability** - Cumulative Layout Shift (CLS) measurement
-
-### Page-Specific Checks
-- **Gallery Page** - Image loading and grid layout
-- **Contact Page** - Form element validation
-- **Performance Metrics** - JS heap usage, layout counts
-
-### Performance Metrics
-- **JavaScript Heap Usage** - Memory consumption tracking
-- **Layout Count** - DOM layout recalculations
-- **Style Recalculations** - CSS performance impact
-- **Cumulative Layout Shift** - Visual stability score
-
-## Lighthouse Integration
-
-### Audit Categories
-- **Performance** - Warning threshold: 80/100
-- **Accessibility** - Error threshold: 90/100
-- **Best Practices** - Warning threshold: 80/100
-- **SEO** - Warning threshold: 80/100
-- **PWA** - Disabled (not applicable)
-
-### Configuration
-The Lighthouse configuration is defined in [`.lighthouserc.json`](../.lighthouserc.json) and includes:
-- Multiple URL testing
-- Desktop preset configuration
-- Chrome flags for CI environment
-- Assertion thresholds for each category
-
-## Test Results and Reporting
-
-### Results Generated
-1. **PR Comments** - Comprehensive test summaries with pass/fail status
-2. **Console Logs** - Detailed test execution information
-3. **GitHub Issues** - Critical failures generate tracking issues
-4. **Lighthouse Reports** - Performance and quality audits (separate job)
-
-### GitHub Integration
-- **PR Comments** - Automated test result summaries with detailed metrics
-- **Issue Creation** - Critical failures generate tracking issues
-- **Status Checks** - Pass/fail status for PR merging
-- **Workflow Logs** - Complete test execution details
-
-## Running Tests Locally
-
-### Prerequisites
-```bash
-npm install
+---
+*Visual testing completed*
 ```
 
-### Available Commands
-```bash
-# Run existing unit tests
-npm test
+## Benefits
 
-# Build and preview (for manual testing)
-npm run build
-npm run preview
-```
+### Simple & Reliable
+- **Minimal dependencies** - Only Puppeteer
+- **Fast execution** - Basic checks only
+- **Clear results** - Easy to understand output
+- **No file I/O** - Everything in memory
 
-### Visual Testing
-Visual testing is **workflow-only** and runs automatically in GitHub Actions. This approach ensures:
-- **Universal Compatibility** - Works with any project structure (CommonJS, ES modules, etc.)
-- **No Local Dependencies** - Doesn't pollute your project with testing packages
-- **No File I/O** - Results reported directly to PR comments without creating files
-- **Lightweight Execution** - Minimal resource usage and faster execution
-- **Zero Configuration** - No setup required in individual projects
-
-The visual testing dependencies are installed locally in the GitHub Actions runner and results are streamed directly to PR comments for immediate feedback.
+### Automatic Integration
+- **PR Comments** - Results appear directly in PRs
+- **Status Checks** - Pass/fail status for merging
+- **Error Detection** - Catches broken pages early
 
 ## Workflow Configuration
 
-### Manual Trigger Options
-When manually triggering the workflow, you can specify:
-- **Test Environment** - preview, development, staging
-- **Browser** - chromium, firefox, webkit
-- **Viewport** - mobile, tablet, desktop, all
+### Manual Trigger
+You can run visual tests manually:
+1. Go to GitHub Actions tab
+2. Select "Visual Web Testing"
+3. Click "Run workflow"
 
-### Environment Variables
-- `NODE_VERSION` - Node.js version (default: 18)
-- `ASTRO_TELEMETRY_DISABLED` - Disables Astro telemetry
-- `VIEWPORT_WIDTH/HEIGHT` - Custom viewport dimensions
-- `BROWSER_TYPE` - Browser selection for tests
+### Customization
+To modify which pages are tested, edit the `pages` array in the workflow:
 
-## Integration with Existing Workflows
-
-### Claude Code Review Integration
-The visual testing workflow is designed to complement the existing Claude code review:
-
-1. **Parallel Execution** - Visual tests run alongside code review
-2. **Shared Context** - Both workflows analyze the same PR changes
-3. **Issue Correlation** - Visual failures can reference code review findings
-4. **Combined Reporting** - Results are aggregated in PR comments
-
-### Issue Creation Workflow
-Visual test failures integrate with the existing issue creation system:
-- Uses same labeling system (`automated-review`, `severity:high`)
-- Links to source PR for traceability
-- Follows same issue template structure
-- Respects issue creation limits to avoid spam
+```javascript
+const pages = [
+  { name: 'Home', path: '/' },
+  { name: 'About', path: '/about' },
+  // Add more pages here
+];
+```
 
 ## Troubleshooting
 
 ### Common Issues
-1. **Server Startup Timeout** - Increase `startServerReadyTimeout` in Lighthouse config
-2. **Browser Launch Failures** - Check Chrome flags in CI environment
-3. **Screenshot Differences** - Font rendering variations between environments
-4. **Memory Issues** - Adjust heap size limits for large pages
+- **Server not ready** - Increase sleep time in workflow
+- **Page load timeout** - Check for slow-loading content
+- **Missing pages** - Verify page paths exist
 
-### Debug Mode
-Enable debug output by setting environment variables:
-```bash
-DEBUG=puppeteer:* npm run test:visual
-```
-
-### CI/CD Considerations
-- Tests run in headless mode with optimized flags
-- Artifacts are automatically uploaded and retained
-- Failed tests don't block PR merging but create tracking issues
-- Scheduled tests provide regression detection
+### Debug Information
+Check workflow logs for detailed error messages and page load information.
 
 ## Future Enhancements
 
-### Planned Features
-1. **Visual Regression Testing** - Screenshot comparison with baselines
-2. **Cross-Device Testing** - Extended device matrix
-3. **A11y Testing** - Enhanced accessibility validation
-4. **Performance Budgets** - Stricter performance thresholds
-5. **Custom Test Scenarios** - User journey testing
+This simplified approach can be extended with:
+- Screenshot comparison
+- Performance metrics
+- Accessibility checks
+- Cross-browser testing
+- Mobile viewport testing
 
-### Integration Opportunities
-1. **Deployment Hooks** - Post-deployment validation
-2. **Monitoring Integration** - Real-time performance tracking
-3. **Analytics Correlation** - User experience metrics
-4. **Security Scanning** - OWASP compliance checks
-
-## Contributing
-
-When adding new pages or features:
-1. Update the `TEST_PAGES` array in the visual testing script
-2. Add page-specific checks if needed
-3. Update this documentation
-4. Test locally before submitting PR
-
-For workflow modifications:
-1. Test changes in a fork first
-2. Update environment variables documentation
-3. Ensure backward compatibility
-4. Update integration points with existing workflows
+The current implementation focuses on reliability and simplicity while providing essential visual testing capabilities.

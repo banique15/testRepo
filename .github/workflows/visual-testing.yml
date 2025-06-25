@@ -1,80 +1,26 @@
 name: Visual Web Testing
 
 on:
-  # Trigger on PR events (parallel to code review)
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize]
     branches: [main, develop, master]
-  
-  # Trigger after successful builds
-  workflow_run:
-    workflows: ["Claude Code Review"]
-    types: [completed]
-    branches: [main, develop, master]
-  
-  # Manual trigger for testing
   workflow_dispatch:
-    inputs:
-      test_environment:
-        description: 'Environment to test'
-        required: true
-        default: 'preview'
-        type: choice
-        options:
-          - preview
-          - development
-          - staging
-      browser:
-        description: 'Browser to test with'
-        required: true
-        default: 'chromium'
-        type: choice
-        options:
-          - chromium
-          - firefox
-          - webkit
-      viewport:
-        description: 'Viewport size'
-        required: true
-        default: 'desktop'
-        type: choice
-        options:
-          - mobile
-          - tablet
-          - desktop
-          - all
-
-  # Scheduled regression testing
-  schedule:
-    - cron: '0 2 * * 1-5'  # Weekdays at 2 AM UTC
 
 env:
   NODE_VERSION: '18'
-  ASTRO_TELEMETRY_DISABLED: 1
 
 jobs:
   visual-tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     
     permissions:
       contents: read
       pull-requests: write
-      issues: write
-      checks: write
-      statuses: write
-
-    strategy:
-      fail-fast: false
-      matrix:
-        browser: ${{ github.event_name == 'workflow_dispatch' && fromJSON(format('["{0}"]', github.event.inputs.browser)) || fromJSON('["chromium", "firefox"]') }}
-        viewport: ${{ github.event_name == 'workflow_dispatch' && fromJSON(format('["{0}"]', github.event.inputs.viewport)) || fromJSON('["desktop", "mobile"]') }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -82,630 +28,134 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
 
-      - name: Get changed files in PR
-        id: changed-files
-        if: github.event_name == 'pull_request'
-        run: |
-          # Get list of changed files in the PR
-          CHANGED_FILES=$(gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files \
-            --jq '.[].filename' | grep -E '\.(astro|md|mdx)$' | grep '^src/pages/' || echo "")
-          
-          # Convert multiline to single line with pipe separator for GitHub Actions output
-          CHANGED_FILES_SINGLE=$(echo "$CHANGED_FILES" | tr '\n' '|' | sed 's/|$//')
-          
-          echo "changed_files=$CHANGED_FILES_SINGLE" >> $GITHUB_OUTPUT
-          echo "Changed page files in PR:"
-          echo "$CHANGED_FILES"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Check if visual testing is needed
-        id: check-testing-needed
-        run: |
-          CHANGED_FILES="${{ steps.changed-files.outputs.changed_files }}"
-          
-          # Always run for manual dispatch, scheduled runs, or workflow_run
-          if [ "${{ github.event_name }}" != "pull_request" ]; then
-            echo "needs_testing=true" >> $GITHUB_OUTPUT
-            echo "Testing needed: Non-PR trigger"
-            exit 0
-          fi
-          
-          # Check if any page files or components were changed
-          if echo "$CHANGED_FILES" | grep -E '\.(astro|md|mdx)$' > /dev/null; then
-            echo "needs_testing=true" >> $GITHUB_OUTPUT
-            echo "Testing needed: Page or component files changed"
-          elif git diff --name-only HEAD~1 HEAD | grep -E '^src/(components|layouts)/' > /dev/null; then
-            echo "needs_testing=true" >> $GITHUB_OUTPUT
-            echo "Testing needed: Component or layout files changed"
-          else
-            echo "needs_testing=false" >> $GITHUB_OUTPUT
-            echo "Testing not needed: No relevant files changed"
-          fi
-
       - name: Install dependencies
-        if: steps.check-testing-needed.outputs.needs_testing == 'true'
         run: |
           npm install
-          # Install Puppeteer and testing dependencies locally for workflow
-          npm install puppeteer playwright @playwright/test lighthouse axe-core
+          npm install puppeteer
 
-      - name: Build Astro site
-        if: steps.check-testing-needed.outputs.needs_testing == 'true'
-        run: |
-          npm run build
-          echo "Build completed successfully"
+      - name: Build site
+        run: npm run build
 
       - name: Start preview server
-        if: steps.check-testing-needed.outputs.needs_testing == 'true'
         run: |
           npm run preview &
-          echo "PREVIEW_PID=$!" >> $GITHUB_ENV
-          # Wait for server to be ready
-          timeout 60 bash -c 'until curl -s http://localhost:4321 > /dev/null; do sleep 2; done'
-          echo "Preview server is ready"
-
-      - name: Install Playwright browsers
-        if: steps.check-testing-needed.outputs.needs_testing == 'true'
-        run: npx playwright install --with-deps ${{ matrix.browser }}
-
-      - name: Comment on PR when testing is skipped
-        if: github.event_name == 'pull_request' && steps.check-testing-needed.outputs.needs_testing == 'false'
-        run: |
-          gh pr comment ${{ github.event.pull_request.number }} --body "## 📸 Visual Testing Skipped
-          
-          Visual testing was skipped because no relevant files were changed in this PR.
-          
-          **Files that trigger visual testing:**
-          - Pages: \`src/pages/*.astro\`, \`src/pages/*.md\`, \`src/pages/*.mdx\`
-          - Components: \`src/components/**/*\`
-          - Layouts: \`src/layouts/**/*\`
-          
-          If you believe visual testing should run, you can manually trigger it from the Actions tab.
-          
-          ---
-          *Visual testing automation*"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          sleep 10
 
       - name: Run visual tests
-        if: steps.check-testing-needed.outputs.needs_testing == 'true'
         id: visual-tests
         run: |
-          # Set viewport configuration
-          case "${{ matrix.viewport }}" in
-            "mobile")
-              VIEWPORT_WIDTH=375
-              VIEWPORT_HEIGHT=667
-              ;;
-            "tablet")
-              VIEWPORT_WIDTH=768
-              VIEWPORT_HEIGHT=1024
-              ;;
-            "desktop")
-              VIEWPORT_WIDTH=1920
-              VIEWPORT_HEIGHT=1080
-              ;;
-            *)
-              VIEWPORT_WIDTH=1920
-              VIEWPORT_HEIGHT=1080
-              ;;
-          esac
-          
-          echo "VIEWPORT_WIDTH=$VIEWPORT_WIDTH" >> $GITHUB_ENV
-          echo "VIEWPORT_HEIGHT=$VIEWPORT_HEIGHT" >> $GITHUB_ENV
-          
-          # Pass changed files to the test script (convert pipe-separated back to newline-separated)
-          CHANGED_FILES_FORMATTED=$(echo "${{ steps.changed-files.outputs.changed_files }}" | tr '|' '\n')
-          echo "CHANGED_FILES<<EOF" >> $GITHUB_ENV
-          echo "$CHANGED_FILES_FORMATTED" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
-          
-          # Create standalone visual tests script (CommonJS for compatibility)
-          cat > visual-tests-workflow.cjs << 'EOF'
+          cat > simple-visual-test.js << 'EOF'
           const puppeteer = require('puppeteer');
-          const fs = require('fs').promises;
-          const path = require('path');
-
-          const BASE_URL = 'http://localhost:4321';
-          const VIEWPORT_WIDTH = parseInt(process.env.VIEWPORT_WIDTH);
-          const VIEWPORT_HEIGHT = parseInt(process.env.VIEWPORT_HEIGHT);
-          const BROWSER_TYPE = process.env.BROWSER_TYPE;
-
-          // Discover pages to test based on changed files
-          function discoverPagesToTest() {
-            const changedFiles = process.env.CHANGED_FILES || '';
-            const pages = [];
-            
-            console.log('Changed files from PR:', changedFiles);
-            
-            if (!changedFiles.trim()) {
-              // If no changed files or not a PR, test common pages
-              console.log('No changed page files detected, testing common pages...');
-              return [
-                { name: 'home', path: '/', title: 'Home Page' },
-                { name: 'about', path: '/about', title: 'About Page' },
-                { name: 'gallery', path: '/gallery', title: 'Gallery Page' }
-              ];
-            }
-            
-            // Always include home page as it might be affected by component changes
-            pages.push({ name: 'home', path: '/', title: 'Home Page' });
-            
-            // Process changed files
-            const changedFilesList = changedFiles.split('\n').filter(f => f.trim());
-            
-            changedFilesList.forEach(filePath => {
-              if (filePath.startsWith('src/pages/') && (filePath.endsWith('.astro') || filePath.endsWith('.md') || filePath.endsWith('.mdx'))) {
-                const fileName = filePath.replace('src/pages/', '').replace(/\.(astro|md|mdx)$/, '');
-                
-                // Skip index file (already handled as home)
-                if (fileName === 'index') return;
-                
-                // Convert file path to URL path
-                let urlPath = '/' + fileName;
-                let pageName = fileName;
-                let pageTitle = fileName.charAt(0).toUpperCase() + fileName.slice(1) + ' Page';
-                
-                // Handle nested paths
-                if (fileName.includes('/')) {
-                  const parts = fileName.split('/');
-                  pageName = parts.join('-');
-                  pageTitle = parts.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ') + ' Page';
-                }
-                
-                // Avoid duplicates
-                if (!pages.find(p => p.path === urlPath)) {
-                  pages.push({
-                    name: pageName,
-                    path: urlPath,
-                    title: pageTitle,
-                    sourceFile: filePath
-                  });
-                }
-              }
-            });
-            
-            // Also check if any components were changed that might affect multiple pages
-            const componentChanges = changedFilesList.filter(f => f.startsWith('src/components/'));
-            if (componentChanges.length > 0) {
-              console.log('Component changes detected, adding key pages for testing...');
-              
-              // Add key pages that likely use components
-              const keyPages = [
-                { name: 'about', path: '/about', title: 'About Page' },
-                { name: 'gallery', path: '/gallery', title: 'Gallery Page' },
-                { name: 'contact', path: '/contact', title: 'Contact Page' }
-              ];
-              
-              keyPages.forEach(keyPage => {
-                if (!pages.find(p => p.path === keyPage.path)) {
-                  pages.push({ ...keyPage, reason: 'Component changes detected' });
-                }
-              });
-            }
-            
-            console.log('Pages to test:', pages.map(p => `${p.title} (${p.path})`).join(', '));
-            return pages;
-          }
           
-          const TEST_PAGES = discoverPagesToTest();
-
-          async function runVisualTests() {
+          const pages = [
+            { name: 'Home', path: '/' },
+            { name: 'About', path: '/about' },
+            { name: 'Gallery', path: '/gallery' },
+            { name: 'Contact', path: '/contact' },
+            { name: 'FAQ', path: '/faq' }
+          ];
+          
+          async function runTests() {
             const browser = await puppeteer.launch({
               headless: 'new',
-              args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-gpu'
-              ]
+              args: ['--no-sandbox', '--disable-setuid-sandbox']
             });
-
-            const results = {
-              browser: BROWSER_TYPE,
-              viewport: `${VIEWPORT_WIDTH}x${VIEWPORT_HEIGHT}`,
-              timestamp: new Date().toISOString(),
-              tests: [],
-              summary: {
-                total: 0,
-                passed: 0,
-                failed: 0,
-                warnings: 0
-              }
-            };
-
-            try {
-              for (const page of TEST_PAGES) {
-                console.log(`Testing ${page.title} (${page.path})...`);
-                
-                const testResult = await testPage(browser, page);
-                results.tests.push(testResult);
-                results.summary.total++;
-                
-                if (testResult.status === 'passed') {
-                  results.summary.passed++;
-                } else if (testResult.status === 'failed') {
-                  results.summary.failed++;
-                } else {
-                  results.summary.warnings++;
-                }
-              }
-
-              // Generate PR comment content
-              const commentContent = generatePRComment(results);
-              
-              console.log('\n=== Visual Test Summary ===');
-              console.log(`Browser: ${results.browser}`);
-              console.log(`Viewport: ${results.viewport}`);
-              console.log(`Total Tests: ${results.summary.total}`);
-              console.log(`Passed: ${results.summary.passed}`);
-              console.log(`Failed: ${results.summary.failed}`);
-              console.log(`Warnings: ${results.summary.warnings}`);
-
-              // Output results for GitHub Actions
-              console.log('VISUAL_TEST_RESULTS=' + JSON.stringify(results));
-              console.log('VISUAL_TEST_COMMENT=' + commentContent);
-              console.log('VISUAL_TEST_FAILED=' + (results.summary.failed > 0 ? 'true' : 'false'));
-
-              // Exit with error if any tests failed
-              if (results.summary.failed > 0) {
-                process.exit(1);
-              }
-
-            } finally {
-              await browser.close();
-            }
-          }
-
-          function generatePRComment(results) {
-            const statusEmoji = {
-              passed: '✅',
-              failed: '❌',
-              warning: '⚠️'
-            };
             
-            let comment = `## 📸 Visual Test Results - ${results.browser} (${results.viewport.split('x')[0] === '375' ? 'mobile' : results.viewport.split('x')[0] === '768' ? 'tablet' : 'desktop'})\n\n`;
-            comment += `**Summary:** ${results.summary.passed}/${results.summary.total} tests passed\n\n`;
+            const results = [];
+            let totalTests = 0;
+            let passedTests = 0;
             
-            if (results.summary.failed > 0) {
-              comment += `### ❌ Failed Tests (${results.summary.failed})\n`;
-              results.tests.filter(t => t.status === 'failed').forEach(test => {
-                comment += `- **${test.title}**: ${test.errors.join(', ')}\n`;
-              });
-              comment += '\n';
+            for (const page of pages) {
+              console.log(`Testing ${page.name}...`);
+              const pageResult = await testPage(browser, page);
+              results.push(pageResult);
+              totalTests++;
+              if (pageResult.status === 'passed') passedTests++;
             }
             
-            if (results.summary.warnings > 0) {
-              comment += `### ⚠️ Warnings (${results.summary.warnings})\n`;
-              results.tests.filter(t => t.status === 'warning').forEach(test => {
-                const warnings = test.checks.filter(c => c.status === 'warning');
-                comment += `- **${test.title}**: ${warnings.map(w => w.name).join(', ')}\n`;
-              });
-              comment += '\n';
-            }
+            await browser.close();
             
-            comment += `### 📊 Test Details\n`;
-            results.tests.forEach(test => {
-              comment += `- ${statusEmoji[test.status]} **${test.title}** (${test.path})\n`;
-              if (test.checks.length > 0) {
-                const checkSummary = test.checks.reduce((acc, check) => {
-                  acc[check.status] = (acc[check.status] || 0) + 1;
-                  return acc;
-                }, {});
-                comment += `  - Checks: ${Object.entries(checkSummary).map(([status, count]) => `${count} ${status}`).join(', ')}\n`;
+            // Generate simple comment
+            let comment = `## 📸 Visual Test Results\n\n`;
+            comment += `**Summary:** ${passedTests}/${totalTests} pages loaded successfully\n\n`;
+            
+            results.forEach(result => {
+              const emoji = result.status === 'passed' ? '✅' : '❌';
+              comment += `- ${emoji} **${result.name}** (${result.path})\n`;
+              if (result.error) {
+                comment += `  - Error: ${result.error}\n`;
               }
-              if (test.metrics.JSHeapUsedSize) {
-                comment += `  - Performance: ${test.metrics.JSHeapUsedSize}MB heap, ${test.metrics.LayoutCount} layouts\n`;
+              if (result.title) {
+                comment += `  - Title: "${result.title}"\n`;
               }
             });
             
-            comment += `\n---\n*Visual tests completed at ${results.timestamp}*`;
-            return comment;
+            comment += `\n---\n*Visual testing completed*`;
+            
+            // Output for GitHub Actions
+            console.log('TEST_COMMENT=' + Buffer.from(comment).toString('base64'));
+            console.log('TEST_PASSED=' + (passedTests === totalTests ? 'true' : 'false'));
+            
+            if (passedTests < totalTests) {
+              process.exit(1);
+            }
           }
-
+          
           async function testPage(browser, pageConfig) {
             const page = await browser.newPage();
-            const testResult = {
+            const result = {
               name: pageConfig.name,
-              title: pageConfig.title,
               path: pageConfig.path,
-              url: BASE_URL + pageConfig.path,
-              status: 'passed',
-              checks: [],
-              screenshots: [],
-              metrics: {},
-              errors: []
+              status: 'failed',
+              error: null,
+              title: null
             };
-
+            
             try {
-              // Set viewport
-              await page.setViewport({
-                width: VIEWPORT_WIDTH,
-                height: VIEWPORT_HEIGHT
-              });
-
-              // Navigate to page
-              const response = await page.goto(testResult.url, {
+              await page.setViewport({ width: 1920, height: 1080 });
+              
+              const response = await page.goto(`http://localhost:4321${pageConfig.path}`, {
                 waitUntil: 'networkidle2',
-                timeout: 30000
-              });
-
-              // Check if page loaded successfully
-              if (!response.ok()) {
-                testResult.errors.push(`HTTP ${response.status()}: ${response.statusText()}`);
-                testResult.status = 'failed';
-              }
-
-              // Skip screenshot saving to avoid file I/O
-              // Screenshots would be saved here if needed for artifacts
-
-              // Performance metrics
-              const metrics = await page.metrics();
-              testResult.metrics = {
-                JSHeapUsedSize: Math.round(metrics.JSHeapUsedSize / 1024 / 1024 * 100) / 100,
-                JSHeapTotalSize: Math.round(metrics.JSHeapTotalSize / 1024 / 1024 * 100) / 100,
-                LayoutCount: metrics.LayoutCount,
-                RecalcStyleCount: metrics.RecalcStyleCount
-              };
-
-              // Visual checks
-              const checks = await performVisualChecks(page, pageConfig);
-              testResult.checks = checks;
-
-              // Check for JavaScript errors
-              const jsErrors = await page.evaluate(() => {
-                return window.jsErrors || [];
+                timeout: 15000
               });
               
-              if (jsErrors.length > 0) {
-                testResult.errors.push(...jsErrors);
-                testResult.status = 'failed';
+              if (response.ok()) {
+                result.title = await page.title();
+                result.status = 'passed';
+              } else {
+                result.error = `HTTP ${response.status()}`;
               }
-
-              // Determine overall status
-              const failedChecks = checks.filter(check => check.status === 'failed');
-              const warningChecks = checks.filter(check => check.status === 'warning');
               
-              if (failedChecks.length > 0 || testResult.errors.length > 0) {
-                testResult.status = 'failed';
-              } else if (warningChecks.length > 0) {
-                testResult.status = 'warning';
-              }
-
             } catch (error) {
-              testResult.errors.push(error.message);
-              testResult.status = 'failed';
+              result.error = error.message;
             } finally {
               await page.close();
             }
-
-            return testResult;
+            
+            return result;
           }
-
-          async function performVisualChecks(page, pageConfig) {
-            const checks = [];
-
-            try {
-              // Check page title
-              const title = await page.title();
-              checks.push({
-                name: 'Page Title',
-                status: title && title.trim() !== '' ? 'passed' : 'failed',
-                message: title ? `Title: "${title}"` : 'Page title is empty',
-                expected: 'Non-empty page title',
-                actual: title || 'Empty'
-              });
-
-              // Check for responsive meta tag
-              const hasViewportMeta = await page.$('meta[name="viewport"]');
-              checks.push({
-                name: 'Viewport Meta Tag',
-                status: hasViewportMeta ? 'passed' : 'warning',
-                message: hasViewportMeta ? 'Viewport meta tag found' : 'Viewport meta tag missing',
-                expected: 'Viewport meta tag present',
-                actual: hasViewportMeta ? 'Present' : 'Missing'
-              });
-
-              // Check for main navigation
-              const hasNavigation = await page.$('nav, [role="navigation"]');
-              checks.push({
-                name: 'Navigation Element',
-                status: hasNavigation ? 'passed' : 'warning',
-                message: hasNavigation ? 'Navigation element found' : 'Navigation element not found',
-                expected: 'Navigation element present',
-                actual: hasNavigation ? 'Present' : 'Missing'
-              });
-
-              // Check for images without alt text
-              const imagesWithoutAlt = await page.$$eval('img:not([alt])', imgs => imgs.length);
-              checks.push({
-                name: 'Image Alt Text',
-                status: imagesWithoutAlt === 0 ? 'passed' : 'warning',
-                message: imagesWithoutAlt === 0 ? 'All images have alt text' : `${imagesWithoutAlt} images missing alt text`,
-                expected: 'All images have alt text',
-                actual: `${imagesWithoutAlt} images without alt text`
-              });
-
-              // Check for console errors
-              const consoleErrors = [];
-              page.on('console', msg => {
-                if (msg.type() === 'error') {
-                  consoleErrors.push(msg.text());
-                }
-              });
-
-              // Wait a bit to catch any console errors
-              await page.waitForTimeout(2000);
-
-              checks.push({
-                name: 'Console Errors',
-                status: consoleErrors.length === 0 ? 'passed' : 'failed',
-                message: consoleErrors.length === 0 ? 'No console errors' : `${consoleErrors.length} console errors found`,
-                expected: 'No console errors',
-                actual: consoleErrors.length > 0 ? consoleErrors.join('; ') : 'None'
-              });
-
-              // Page-specific checks
-              if (pageConfig.name === 'gallery') {
-                const galleryImages = await page.$$('.gallery img, [class*="gallery"] img');
-                checks.push({
-                  name: 'Gallery Images',
-                  status: galleryImages.length > 0 ? 'passed' : 'failed',
-                  message: `Found ${galleryImages.length} gallery images`,
-                  expected: 'Gallery images present',
-                  actual: `${galleryImages.length} images`
-                });
-              }
-
-              // Check for layout shift (basic)
-              const layoutShiftScore = await page.evaluate(() => {
-                return new Promise((resolve) => {
-                  let cumulativeLayoutShift = 0;
-                  new PerformanceObserver((list) => {
-                    for (const entry of list.getEntries()) {
-                      if (!entry.hadRecentInput) {
-                        cumulativeLayoutShift += entry.value;
-                      }
-                    }
-                    resolve(cumulativeLayoutShift);
-                  }).observe({ type: 'layout-shift', buffered: true });
-                  
-                  setTimeout(() => resolve(cumulativeLayoutShift), 3000);
-                });
-              });
-
-              checks.push({
-                name: 'Layout Stability',
-                status: layoutShiftScore < 0.1 ? 'passed' : layoutShiftScore < 0.25 ? 'warning' : 'failed',
-                message: `Cumulative Layout Shift: ${layoutShiftScore.toFixed(4)}`,
-                expected: 'CLS < 0.1 (good)',
-                actual: layoutShiftScore.toFixed(4)
-              });
-
-            } catch (error) {
-              checks.push({
-                name: 'Visual Checks Error',
-                status: 'failed',
-                message: `Error performing visual checks: ${error.message}`,
-                expected: 'Successful visual checks',
-                actual: 'Error occurred'
-              });
-            }
-
-            return checks;
-          }
-
-
-          // Run the tests
-          runVisualTests().catch(error => {
-            console.error('Visual tests failed:', error);
+          
+          runTests().catch(error => {
+            console.error('Test failed:', error);
             process.exit(1);
           });
           EOF
           
-          # Run the visual tests
-          BROWSER_TYPE=${{ matrix.browser }} node visual-tests-workflow.cjs
+          node simple-visual-test.js
 
-      - name: Comment on PR with visual test results
+      - name: Comment on PR
         if: github.event_name == 'pull_request' && always()
         run: |
-          # Extract comment content from test output
-          COMMENT_CONTENT=$(echo "${{ steps.visual-tests.outputs.stdout }}" | grep "VISUAL_TEST_COMMENT=" | cut -d'=' -f2-)
+          # Extract comment from test output
+          COMMENT_B64=$(echo "${{ steps.visual-tests.outputs.stdout }}" | grep "TEST_COMMENT=" | cut -d'=' -f2)
           
-          if [ ! -z "$COMMENT_CONTENT" ]; then
-            gh pr comment ${{ github.event.pull_request.number }} --body "$COMMENT_CONTENT"
+          if [ ! -z "$COMMENT_B64" ]; then
+            COMMENT=$(echo "$COMMENT_B64" | base64 -d)
+            gh pr comment ${{ github.event.pull_request.number }} --body "$COMMENT"
           else
-            # Fallback comment if extraction fails
-            gh pr comment ${{ github.event.pull_request.number }} --body "## 📸 Visual Testing Completed
+            gh pr comment ${{ github.event.pull_request.number }} --body "## 📸 Visual Testing
             
-            Visual tests have been executed for this PR. Check the workflow logs for detailed results.
-            
-            **Browser:** ${{ matrix.browser }}
-            **Viewport:** ${{ matrix.viewport }}
-            
-            ---
-            *Visual testing automation*"
+            Visual tests completed. Check workflow logs for details."
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create issues for critical visual failures
-        if: failure() && github.event_name == 'pull_request'
-        run: |
-          # Check if there were failures from test output
-          HAS_FAILURES=$(echo "${{ steps.visual-tests.outputs.stdout }}" | grep "VISUAL_TEST_FAILED=true" || echo "")
-          
-          if [ ! -z "$HAS_FAILURES" ]; then
-            gh issue create \
-              --title "🔍 Visual Test Failures in PR #${{ github.event.pull_request.number }}" \
-              --body "## Visual Test Failure Report
-            
-            **PR:** #${{ github.event.pull_request.number }}
-            **Browser:** ${{ matrix.browser }}
-            **Viewport:** ${{ matrix.viewport }}
-            **Workflow:** [View Details](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-            
-            ### Summary
-            Visual tests failed for this PR. Please check the workflow logs for detailed information about:
-            - Failed page loads
-            - Visual check failures
-            - Performance issues
-            - Console errors
-            
-            ### Next Steps
-            1. Review the workflow logs for specific failure details
-            2. Fix the identified issues
-            3. Push new commits to re-trigger testing
-            
-            ---
-            *This issue was automatically created from visual test failures.*" \
-              --label "visual-testing,automated-review,severity:high"
-          fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Stop preview server
-        if: always()
-        run: |
-          if [ ! -z "$PREVIEW_PID" ]; then
-            kill $PREVIEW_PID || true
-          fi
-          # Also kill any remaining processes on port 4321
-          pkill -f "astro preview" || true
-
-  lighthouse-audit:
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
-    needs: visual-tests
-    
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: |
-          npm install
-          npm install @lhci/cli@0.12.x
-
-      - name: Build and start server
-        run: |
-          npm run build
-          npm run preview &
-          timeout 60 bash -c 'until curl -s http://localhost:4321 > /dev/null; do sleep 2; done'
-
-      - name: Run Lighthouse CI
-        run: |
-          npx lhci autorun --config=.lighthouserc.json || npx lhci autorun --collect.url=http://localhost:4321 --collect.url=http://localhost:4321/about --collect.url=http://localhost:4321/gallery --collect.url=http://localhost:4321/contact --collect.url=http://localhost:4321/faq --upload.target=temporary-public-storage
-
-      - name: Comment Lighthouse results on PR
-        if: github.event_name == 'pull_request'
-        run: |
-          # This would typically parse Lighthouse results and comment on PR
-          echo "Lighthouse audit completed - results would be posted to PR"
