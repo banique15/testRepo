@@ -1,6 +1,7 @@
 ---
 import Header from '../components/Header.astro';
 import Navigation from '../components/Navigation.astro';
+import HeroSection from '../components/HeroSection.astro';
 import ImageCarousel from '../components/ImageCarousel.astro';
 
 const pageTitle = "Welcome to My Astro Site";
@@ -133,9 +134,16 @@ const currentYear = new Date().getFullYear();
 			<Navigation currentPath="/" />
 			<Header title={pageTitle} />
 			
+			<HeroSection 
+				headline="Build Amazing Experiences" 
+				subheadline="Create fast, modern websites with the power of Astro and cutting-edge web technologies. Start your journey today!"
+				ctaText="Explore Features"
+				ctaLink="#features"
+			/>
+			
 			<ImageCarousel />
 
-			<div class="features">
+			<div class="features" id="features">
 				<h2>✨ Why Astro?</h2>
 				<div class="feature-list">
 					<div class="feature-item">
